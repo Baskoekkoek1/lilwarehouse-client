@@ -1,5 +1,7 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
+import { useInventoryStore } from "./inventory";
+import { useJobsStore } from "./jobs";
 import apiClient from "../api/client";
 
 export const useAuthStore = defineStore("auth", () => {
@@ -35,9 +37,15 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   function logout() {
+    const inventory = useInventoryStore();
+    const jobs = useJobsStore();
+
     token.value = null;
     user.value = null;
     localStorage.removeItem("lil_token");
+
+    inventory.reset();
+    jobs.reset();
   }
 
   return {
