@@ -9,7 +9,6 @@ export const useUIStore = defineStore("ui", () => {
   const inventory = useInventoryStore();
   const jobs = useJobsStore();
 
-  // This is your "Main Loading Value" available everywhere
   const isGlobalLoading = computed(() => {
     return auth.loading || inventory.loading || jobs.isPolling;
   });
