@@ -4,10 +4,16 @@ import { useInventoryStore } from "./inventory";
 import { useJobsStore } from "./jobs";
 import apiClient from "../api/client";
 
+interface User {
+  id: string;
+  username: string;
+  scopes: string[];
+}
+
 export const useAuthStore = defineStore("auth", () => {
   // State
   const token = ref<string | null>(localStorage.getItem("lil_token"));
-  const user = ref<{ id: string } | null>(null);
+  const user = ref<User | null>(null);
   const loading = ref(false);
   const error = ref<string | null>(null);
 
@@ -24,6 +30,7 @@ export const useAuthStore = defineStore("auth", () => {
 
       const newToken = response.data.token;
       token.value = newToken;
+      user.value = response.data.user;
 
       localStorage.setItem("lil_token", newToken);
 
