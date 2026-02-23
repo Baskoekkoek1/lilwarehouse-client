@@ -8,13 +8,13 @@ const router = createRouter({
     {
       path: "/",
       name: "Home",
-      component: () => import("../views/HomeView.vue"),
+      component: () => import("../views/HomeView/HomeView.vue"),
       meta: { public: true },
     },
     {
       path: "/inventory",
       name: "Inventory",
-      component: () => import("../views/InventoryView.vue"),
+      component: () => import("../views/InventoryView/InventoryView.vue"),
       meta: { public: false },
     },
   ],

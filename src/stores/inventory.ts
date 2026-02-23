@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { ref, computed } from "vue";
+import { ref, computed, type ComputedRef } from "vue";
 import apiClient from "../api/client";
 
 interface InventoryItem {
@@ -8,8 +8,16 @@ interface InventoryItem {
   file_size: string | number;
   status: string;
   storage_key: string;
-  folder_name: string;
+  folder_name: string | null | undefined;
   b2_file_id?: string;
+}
+
+interface VirtualItem {
+  id: string;
+  file_name: string;
+  type: "file" | "folder";
+  file_size?: string | number;
+  status?: string;
 }
 
 export const useInventoryStore = defineStore("inventory", () => {
@@ -20,8 +28,47 @@ export const useInventoryStore = defineStore("inventory", () => {
   const error = ref<string | null>(null);
 
   // --- Getters ---
-  const currentDirectoryContent = computed(() => {
-    return items.value;
+  const currentDirectoryContent: ComputedRef<VirtualItem[]> = computed(() => {
+    const currentPathClean = currentPath.value.replace(/^\/|\/$/g, "");
+
+    // --- ROOT VIEW ---
+    if (currentPath.value === "/") {
+      const rootItems: VirtualItem[] = [];
+      const foundFolders = new Set<string>();
+
+      for (const item of items.value) {
+        const raw = item.folder_name;
+        if (typeof raw === "string" && raw.length > 0) {
+          const parts = raw.split("/");
+          const firstPart = parts[0];
+
+          if (firstPart && !foundFolders.has(firstPart)) {
+            rootItems.push({
+              id: `folder-${firstPart}`,
+              file_name: firstPart,
+              type: "folder",
+            });
+            foundFolders.add(firstPart);
+          }
+        } else {
+          rootItems.push({
+            ...item,
+            type: "file",
+            file_name: item.file_name || "unknown",
+          });
+        }
+      }
+      return rootItems;
+    }
+
+    // --- SUBFOLDER VIEW ---
+    return items.value
+      .filter((item) => (item.folder_name || "") === currentPathClean)
+      .map((item) => ({
+        ...item,
+        type: "file",
+        file_name: item.file_name || "unknown",
+      }));
   });
 
   // --- Actions ---
@@ -55,6 +102,10 @@ export const useInventoryStore = defineStore("inventory", () => {
     error.value = null;
   }
 
+  function navigateTo(path: string) {
+    currentPath.value = path;
+  }
+
   return {
     items,
     currentPath,
@@ -65,5 +116,6 @@ export const useInventoryStore = defineStore("inventory", () => {
     fetchInventory,
     setError,
     reset,
+    navigateTo,
   };
 });
