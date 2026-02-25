@@ -2,7 +2,7 @@ import { defineStore } from "pinia";
 import { ref, computed, type ComputedRef } from "vue";
 import apiClient from "../api/client";
 
-interface InventoryItem {
+export interface InventoryItem {
   id: string;
   file_name: string;
   file_size: string | number;
@@ -13,11 +13,11 @@ interface InventoryItem {
   upload_date: string;
 }
 
-interface VirtualItem {
+export interface VirtualItem {
   id: string;
   file_name: string;
   type: "file" | "folder";
-  file_size?: string | number | undefined;
+  file_size?: string | number;
   status?: string;
   upload_date?: string;
 }
@@ -31,46 +31,63 @@ export const useInventoryStore = defineStore("inventory", () => {
 
   // --- Getters ---
   const currentDirectoryContent: ComputedRef<VirtualItem[]> = computed(() => {
-    const currentPathClean = currentPath.value.replace(/^\/|\/$/g, "");
+    const foldersMap = new Map<string, VirtualItem>();
+    const files: VirtualItem[] = [];
 
-    // --- ROOT VIEW ---
-    if (currentPath.value === "/") {
-      const rootItems: VirtualItem[] = [];
-      const foundFolders = new Set<string>();
+    const currentPathClean =
+      currentPath.value === "/"
+        ? ""
+        : currentPath.value.replace(/^\/|\/$/g, "");
 
-      for (const item of items.value) {
-        const raw = item.folder_name;
-        if (typeof raw === "string" && raw.length > 0) {
-          const parts = raw.split("/");
-          const firstPart = parts[0];
+    for (const item of items.value) {
+      const itemFolder = (item.folder_name || "").replace(/^\/|\/$/g, "");
 
-          if (firstPart && !foundFolders.has(firstPart)) {
-            rootItems.push({
-              id: `folder-${firstPart}`,
-              file_name: firstPart,
-              type: "folder",
-            });
-            foundFolders.add(firstPart);
-          }
-        } else {
-          rootItems.push({
-            ...item,
-            type: "file",
-            file_name: item.file_name || "unknown",
+      if (itemFolder === currentPathClean) {
+        files.push({
+          id: item.id,
+          file_name: item.file_name,
+          type: "file",
+          file_size: item.file_size,
+          status: item.status,
+          upload_date: item.upload_date,
+        });
+      } else if (
+        (currentPathClean === "" && itemFolder !== "") ||
+        (currentPathClean !== "" &&
+          itemFolder.startsWith(currentPathClean + "/"))
+      ) {
+        const relativePath =
+          currentPathClean === ""
+            ? itemFolder
+            : itemFolder.slice(currentPathClean.length + 1);
+
+        const folderName = relativePath.split("/")[0];
+
+        if (!folderName) continue;
+
+        if (!foldersMap.has(folderName)) {
+          foldersMap.set(folderName, {
+            id: `folder-${folderName}`,
+            file_name: folderName,
+            type: "folder",
+            upload_date: item.upload_date,
           });
+        } else {
+          const existing = foldersMap.get(folderName)!;
+          if (item.upload_date > (existing.upload_date || "")) {
+            existing.upload_date = item.upload_date;
+          }
         }
       }
-      return rootItems;
     }
 
-    // --- SUBFOLDER VIEW ---
-    return items.value
-      .filter((item) => (item.folder_name || "") === currentPathClean)
-      .map((item) => ({
-        ...item,
-        type: "file",
-        file_name: item.file_name || "unknown",
-      }));
+    // Sort folders alphabetically
+    const sortedFolders = Array.from(foldersMap.values()).sort((a, b) =>
+      a.file_name.localeCompare(b.file_name),
+    );
+
+    // Return Folders first, then Files
+    return [...sortedFolders, ...files];
   });
 
   // --- Actions ---
@@ -79,7 +96,7 @@ export const useInventoryStore = defineStore("inventory", () => {
     error.value = null;
     try {
       const response = await apiClient.get("/inventory");
-
+      // Expecting { data: { data: InventoryItem[] } } based on your API structure
       items.value = response.data.data;
     } catch (err: any) {
       error.value = err.response?.data?.message || "Failed to fetch inventory";
