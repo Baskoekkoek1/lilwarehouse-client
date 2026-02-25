@@ -10,14 +10,16 @@ interface InventoryItem {
   storage_key: string;
   folder_name: string | null | undefined;
   b2_file_id?: string;
+  upload_date: string;
 }
 
 interface VirtualItem {
   id: string;
   file_name: string;
   type: "file" | "folder";
-  file_size?: string | number;
+  file_size?: string | number | undefined;
   status?: string;
+  upload_date?: string;
 }
 
 export const useInventoryStore = defineStore("inventory", () => {

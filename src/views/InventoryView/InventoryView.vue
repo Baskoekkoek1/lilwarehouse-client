@@ -1,77 +1,119 @@
 <template>
-  <div class="inventory-container">
-    <header>
-      <h1>LilWarehouse Inventory</h1>
-      <button @click="inventory.fetchInventory" :disabled="inventory.loading">
-        {{ inventory.loading ? "Refreshing..." : "Refresh" }}
-      </button>
+  <v-container class="inventory-container">
+    <header class="d-flex justify-space-between align-center mb-6">
+      <h1 class="text-h4 font-weight-bold">LilWarehouse Inventory</h1>
+      <v-btn
+        color="primary"
+        variant="elevated"
+        prepend-icon="mdi-refresh"
+        :loading="inventory.loading"
+        @click="inventory.fetchInventory"
+      >
+        Refresh
+      </v-btn>
     </header>
 
-    <span v-if="inventory.loading" class="loader">Loading your files...</span>
+    <div v-if="inventory.loading" class="text-center mt-12">
+      <v-progress-circular indeterminate color="primary" />
+      <p class="mt-4 text-grey">Loading your files...</p>
+    </div>
 
-    <span v-else-if="inventory.error" class="error">
+    <v-alert
+      v-else-if="inventory.error"
+      type="error"
+      variant="tonal"
+      class="mb-4"
+    >
       {{ inventory.error }}
-    </span>
+    </v-alert>
 
     <div v-else-if="inventory.currentDirectoryContent.length > 0">
       <BreadCrumb />
 
-      <table>
+      <v-table theme="dark" class="rounded-lg border">
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Size</th>
+            <th class="text-uppercase text-caption font-weight-bold">Name</th>
+            <th class="text-uppercase text-caption font-weight-bold text-right">
+              Size
+            </th>
+            <th class="text-uppercase text-caption font-weight-bold text-right">
+              Uploaded
+            </th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="item in inventory.currentDirectoryContent" :key="item.id">
+          <tr
+            v-for="item in inventory.currentDirectoryContent"
+            :key="item.id"
+            class="inventory-row"
+          >
             <td
               @click="handleItemClick(item)"
               :class="{ 'folder-row': item.type === 'folder' }"
+              class="py-3"
             >
-              <span class="icon">{{
-                item.type === "folder" ? "📁" : "📄"
-              }}</span>
-              {{ item.file_name }}
+              <div class="d-flex align-center">
+                <v-icon
+                  :icon="getFileIcon(item.file_name, item.type)"
+                  class="mr-3"
+                  :color="item.type === 'folder' ? 'primary' : 'grey-lighten-1'"
+                />
+
+                <span class="text-truncate" style="max-width: 250px">
+                  {{ item.file_name }}
+                  <v-tooltip activator="parent" location="top">
+                    {{ item.file_name }}
+                  </v-tooltip>
+                </span>
+              </div>
             </td>
-            <td>
-              {{ item.type === "folder" ? "--" : item.file_size + " bytes" }}
+
+            <td class="text-right text-grey-lighten-1">
+              {{
+                item.type === "folder" ? "--" : formatBytes(item.file_size || 0)
+              }}
+            </td>
+
+            <td class="text-right text-grey-lighten-1 text-caption">
+              {{ formatDate(item.upload_date) }}
             </td>
           </tr>
         </tbody>
-      </table>
+      </v-table>
     </div>
 
-    <div v-else class="empty-state">
-      <span>The warehouse is empty. Time to stock up!</span>
-    </div>
-  </div>
+    <v-sheet v-else class="text-center pa-12 rounded-lg" border>
+      <v-icon
+        icon="mdi-package-variant-closed"
+        size="64"
+        color="grey-darken-1"
+        class="mb-4"
+      />
+      <p class="text-grey">The warehouse is empty. Time to stock up!</p>
+    </v-sheet>
+  </v-container>
 </template>
 
 <script setup lang="ts">
 import { onMounted } from "vue";
-import { useInventoryStore } from "../../stores/inventory";
+import { useInventoryStore } from "@/stores/inventory";
 import BreadCrumb from "./components/BreadCrumb.vue";
+import { formatBytes, formatDate } from "@/utils/formatters";
+import { getFileIcon } from "@/utils/fileIcons";
 
 const inventory = useInventoryStore();
 
-/**
- * Handles virtual navigation.
- * If a folder is clicked, we append its name to the currentPath.
- */
 const handleItemClick = (item: any) => {
   if (item.type === "folder") {
-    // Construct the new path based on whether we are at root or not
     const cleanPath =
       inventory.currentPath === "/" ? "" : inventory.currentPath;
     const newPath = `${cleanPath}/${item.file_name}`;
-
     inventory.navigateTo(newPath);
   }
 };
 
 onMounted(() => {
-  // Only fetch if we don't have items yet, or refresh manually
   if (inventory.items.length === 0) {
     inventory.fetchInventory();
   }
@@ -80,69 +122,27 @@ onMounted(() => {
 
 <style scoped>
 .inventory-container {
-  padding: 20px;
   max-width: 1200px;
-  margin: 0 auto;
 }
 
-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 10px;
-}
-
-th {
-  text-align: left;
-  border-bottom: 2px solid #444;
-  padding: 12px;
-  color: #888;
-  text-transform: uppercase;
-  font-size: 0.8rem;
-}
-
-td {
-  padding: 12px;
-  border-bottom: 1px solid #333;
-}
-
-.icon {
-  margin-right: 8px;
-  display: inline-block;
-  width: 20px;
+.inventory-row {
+  transition: background-color 0.2s ease;
 }
 
 .folder-row {
-  color: #3498db;
   cursor: pointer;
-  font-weight: 600;
+  transition: color 0.2s ease;
 }
 
 .folder-row:hover {
-  background-color: rgba(52, 152, 219, 0.1);
-  text-decoration: underline;
+  color: rgb(var(--v-theme-primary)) !important;
+  background-color: rgba(var(--v-theme-primary), 0.05);
 }
 
-tr:hover:not(:has(.folder-row)) {
-  background-color: #1a1a1a;
-}
-
-.loader,
-.error,
-.empty-state {
-  display: block;
-  margin-top: 40px;
-  text-align: center;
-  color: #888;
-}
-
-.error {
-  color: #e74c3c;
+.text-truncate {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
 }
 </style>
