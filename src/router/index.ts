@@ -17,6 +17,12 @@ const router = createRouter({
       component: () => import("../views/InventoryView/InventoryView.vue"),
       meta: { public: false },
     },
+    {
+      path: "/upload",
+      name: "Upload",
+      component: () => import("../views/UploadView/UploadView.vue"),
+      meta: { public: false },
+    },
   ],
 });
 

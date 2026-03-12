@@ -4,6 +4,7 @@
       <router-link to="/" class="home-link">{{ props.title }}</router-link>
       <div class="d-flex align-center">
         <router-link to="/inventory" class="page-link">Inventory</router-link>
+        <router-link to="/upload" class="page-link">Upload</router-link>
 
         <v-btn
           :icon="
