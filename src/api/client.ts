@@ -1,46 +1,68 @@
 import axios from "axios";
 import { useAuthStore } from "../stores/auth";
 
+let isRefreshing = false;
+let refreshSubscribers: ((token: string) => void)[] = [];
+
+const onRefreshed = (token: string) => {
+  refreshSubscribers.map((callback) => callback(token));
+  refreshSubscribers = [];
+};
+
 const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "http://localhost:3000",
-  headers: {
-    "Content-Type": "application/json",
-  },
+  withCredentials: true,
 });
 
-apiClient.interceptors.request.use(
-  (config) => {
-    const authStore = useAuthStore();
-    const token = authStore.token;
-
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  },
-);
+apiClient.interceptors.request.use((config) => {
+  const authStore = useAuthStore();
+  if (authStore.token && config.headers) {
+    config.headers.Authorization = `Bearer ${authStore.token}`;
+  }
+  return config;
+});
 
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => {
-    const authStore = useAuthStore();
+  async (error) => {
+    const { config, response } = error;
+    const originalRequest = config;
 
-    console.error(`[API Error] ${error.config?.url}:`, {
-      status: error.response?.status,
-      message: error.response?.data?.message || error.message,
-    });
+    if (response?.status === 401 && !originalRequest._retry) {
+      if (isRefreshing) {
+        // If a refresh is already in progress, wait for it to finish
+        return new Promise((resolve) => {
+          refreshSubscribers.push((token: string) => {
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+            resolve(apiClient(originalRequest));
+          });
+        });
+      }
 
-    if (error.response?.status === 401) {
-      console.warn("Session expired. Triggering global clearAll...");
+      originalRequest._retry = true;
+      isRefreshing = true;
 
-      authStore.logout();
+      try {
+        const authStore = useAuthStore();
 
-      if (window.location.pathname !== "/login") {
-        window.location.href = "/login";
+        const { data } = await axios.post(
+          `${import.meta.env.VITE_API_URL}/auth/refresh`,
+          {},
+          { withCredentials: true },
+        );
+
+        const newToken = data.token;
+        authStore.setToken(newToken);
+
+        isRefreshing = false;
+        onRefreshed(newToken);
+
+        return apiClient(originalRequest);
+      } catch (refreshError) {
+        isRefreshing = false;
+        const authStore = useAuthStore();
+        authStore.logout();
+        return Promise.reject(refreshError);
       }
     }
     return Promise.reject(error);

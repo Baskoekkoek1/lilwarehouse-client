@@ -21,6 +21,11 @@ export const useAuthStore = defineStore("auth", () => {
   const isAuthenticated = computed(() => !!token.value);
 
   // Actions
+  function setToken(newToken: string) {
+    token.value = newToken;
+    localStorage.setItem("lil_token", newToken);
+  }
+
   async function login(username: string, password: string) {
     loading.value = true;
     error.value = null;
@@ -28,11 +33,10 @@ export const useAuthStore = defineStore("auth", () => {
     try {
       const response = await apiClient.post("/login", { username, password });
 
-      const newToken = response.data.token;
-      token.value = newToken;
-      user.value = response.data.user;
+      const { token: newToken, user: userData } = response.data;
 
-      localStorage.setItem("lil_token", newToken);
+      setToken(newToken);
+      user.value = userData;
 
       return true;
     } catch (err: any) {
@@ -63,5 +67,6 @@ export const useAuthStore = defineStore("auth", () => {
     isAuthenticated,
     login,
     logout,
+    setToken,
   };
 });
