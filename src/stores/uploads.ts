@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
-import axios from "axios"; // Crucial: Use raw axios for the S3 PUT
+import axios from "axios";
 import * as UPLOAD from "@/types/uploads";
 import apiClient from "../api/client";
 
@@ -16,31 +16,45 @@ export interface LogEntry {
 }
 
 export const useUploadStore = defineStore("upload", () => {
+  // --- STATE ---
   const uploadQueue = ref<Record<string, UploadTask>>({});
+  const signatureCache = ref<
+    Record<string, { uploadUrl: string; storageKey: string }>
+  >({});
   const recentLogs = ref<LogEntry[]>([]);
+
+  // --- SETTINGS ---
+  const CONCURRENCY_LIMIT = 3;
+  const SIGNATURE_BATCH_SIZE = 50;
 
   // --- GETTERS ---
   const totalCount = computed(() => Object.keys(uploadQueue.value).length);
+
   const processedCount = computed(
     () =>
       Object.values(uploadQueue.value).filter((t) => t.status === "SUCCESS")
         .length,
   );
+
   const errorCount = computed(
     () =>
       Object.values(uploadQueue.value).filter((t) => t.status === "ERROR")
         .length,
   );
+
   const isProcessing = computed(() =>
     Object.values(uploadQueue.value).some((t) =>
       ["GETTING_URL", "UPLOADING", "FINALIZING"].includes(t.status),
     ),
   );
+
   const overallProgress = computed(() => {
     if (totalCount.value === 0) return 0;
-    return Math.round(
-      ((processedCount.value + errorCount.value) / totalCount.value) * 100,
+    const totalProgress = Object.values(uploadQueue.value).reduce(
+      (acc, t) => acc + (t.progress || 0),
+      0,
     );
+    return Math.round(totalProgress / totalCount.value);
   });
 
   // --- LOGGING HELPER ---
@@ -57,12 +71,10 @@ export const useUploadStore = defineStore("upload", () => {
 
   // --- ACTIONS ---
   const addUploadTasks = (payloadItems: UploadPayloadItem[]) => {
-    const filteredItems = payloadItems.filter((item) => {
+    payloadItems.forEach((item) => {
       const name = item.file.name;
-      return !name.startsWith(".") && name !== "Thumbs.db";
-    });
+      if (name.startsWith(".") || name === "Thumbs.db") return;
 
-    filteredItems.forEach((item) => {
       const id = crypto.randomUUID();
       uploadQueue.value[id] = {
         id,
@@ -74,79 +86,118 @@ export const useUploadStore = defineStore("upload", () => {
       };
     });
 
-    if (!isProcessing.value) processQueue();
+    if (!isProcessing.value) startMigration();
   };
 
-  const processQueue = async () => {
-    // 1. Initial Connectivity Check
-    const allPending = Object.values(uploadQueue.value).every(
-      (t) => t.status === "PENDING",
+  const startMigration = async () => {
+    addLog(
+      `Starting migration: ${CONCURRENCY_LIMIT} concurrent streams.`,
+      "info",
     );
-    if (processedCount.value === 0 && allPending && totalCount.value > 0) {
-      try {
-        const hello = await apiClient.get("/hello");
-        addLog(`System Online: ${hello.data.message}`, "success");
-      } catch (e: any) {
-        addLog("Connectivity Failed: Backend unreachable.", "error");
-        return;
-      }
-    }
 
-    const task = Object.values(uploadQueue.value).find(
-      (t) => t.status === "PENDING",
-    );
-    if (!task) {
-      if (totalCount.value > 0 && !isProcessing.value)
-        addLog("Migration batch complete.", "success");
-      return;
-    }
+    const workers = Array.from({ length: CONCURRENCY_LIMIT }, () => worker());
 
     try {
-      addLog(`Initializing: ${task.fileName}`);
+      await Promise.all(workers);
+      addLog("All pending tasks processed.", "success");
+    } catch (err: unknown) {
+      addLog("The worker pool encountered a critical error.", "error");
+    }
+  };
 
-      // STEP 1: Handshake
-      task.status = "GETTING_URL";
-      const { data } = await apiClient.get("/uploads/presigned", {
-        params: {
-          fileName: task.fileName,
-          folderName: task.path || "root",
-        },
+  const worker = async () => {
+    let task = Object.values(uploadQueue.value).find(
+      (queuedTask) => queuedTask.status === "PENDING",
+    );
+
+    while (task) {
+      try {
+        // STEP 1: Get Signature (Batch optimized)
+        task.status = "GETTING_URL";
+        const creds = await getSignature(task);
+
+        // Guard against undefined creds to satisfy TS and runtime safety
+        if (!creds || !creds.uploadUrl) {
+          throw new Error("Failed to retrieve a valid upload signature.");
+        }
+
+        // STEP 2: Binary Pipe (S3 PUT)
+        task.status = "UPLOADING";
+        await axios.put(creds.uploadUrl, task!.file, {
+          headers: { "Content-Type": "application/octet-stream" },
+          timeout: 0,
+          onUploadProgress: (p) => {
+            task!.progress = Math.round((p.loaded / (p.total || 1)) * 100);
+          },
+        });
+
+        // STEP 3: Database Finalization
+        task!.status = "FINALIZING";
+        await apiClient.post("/uploads/complete", {
+          fileName: task!.fileName,
+          folderPath: task!.path || "root",
+          storageKey: creds.storageKey,
+          mimeType: task!.file.type,
+          fileSize: task!.file.size,
+        });
+
+        task!.status = "SUCCESS";
+        addLog(`Finished: ${task!.fileName}`, "success");
+      } catch (err: unknown) {
+        task!.status = "ERROR";
+        const errorMsg =
+          err instanceof Error ? err.message : "Unknown upload error";
+        task!.error = errorMsg;
+        addLog(`Error [${task!.fileName}]: ${errorMsg}`, "error");
+      }
+
+      task = Object.values(uploadQueue.value).find(
+        (t) => t.status === "PENDING",
+      );
+    }
+  };
+
+  const getSignature = async (
+    task: UploadTask,
+  ): Promise<{ uploadUrl: string; storageKey: string } | undefined> => {
+    if (signatureCache.value[task.id]) {
+      const cached = signatureCache.value[task.id];
+      delete signatureCache.value[task.id];
+      return cached;
+    }
+
+    const pendingTasks = Object.values(uploadQueue.value)
+      .filter((t) => t.status === "PENDING" || t.id === task.id)
+      .slice(0, SIGNATURE_BATCH_SIZE);
+
+    try {
+      const { data } = await apiClient.post("/uploads/presigned", {
+        files: pendingTasks.map((t) => ({
+          fileName: t.fileName,
+          folderName: t.path || "root",
+        })),
       });
 
-      const uploadUrl = data?.credentials?.uploadUrl;
-      const storageKey = data?.credentials?.storageKey;
+      if (data?.credentials && Array.isArray(data.credentials)) {
+        data.credentials.forEach((cred: any, index: number) => {
+          const targetTask = pendingTasks[index];
+          if (targetTask) {
+            signatureCache.value[targetTask.id] = {
+              uploadUrl: cred.uploadUrl,
+              storageKey: cred.storageKey,
+            };
+          }
+        });
+      }
 
-      if (!uploadUrl) throw new Error("Backend did not return an uploadUrl.");
-
-      // STEP 2: Binary Pipe
-      task.status = "UPLOADING";
-      await axios.put(uploadUrl, task.file, {
-        headers: {
-          "Content-Type": "application/octet-stream",
-        },
-        timeout: 0,
-        onUploadProgress: (p) => {
-          task.progress = Math.round((p.loaded / (p.total || 1)) * 100);
-        },
-      });
-
-      // STEP 3: Database Finalization
-      task.status = "FINALIZING";
-      await apiClient.post("/uploads/complete", {
-        fileName: task.fileName,
-        folderPath: task.path || "root",
-        storageKey: storageKey,
-        mimeType: task.file.type,
-      });
-
-      task.status = "SUCCESS";
-      addLog(`Success: ${task.fileName}`, "success");
-    } catch (err: any) {
-      task.status = "ERROR";
-      task.error = err.message;
-      addLog(`Error [${task.fileName}]: ${err.message}`, "error");
-    } finally {
-      setTimeout(processQueue, 50);
+      const result = signatureCache.value[task.id];
+      if (result) {
+        delete signatureCache.value[task.id];
+      }
+      return result;
+    } catch (err) {
+      console.error("Signature batch request failed:", err);
+      return undefined;
     }
   };
 
