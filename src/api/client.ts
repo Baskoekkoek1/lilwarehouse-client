@@ -1,5 +1,6 @@
 import axios from "axios";
 import { useAuthStore } from "../stores/auth";
+import { useUIStore } from "../stores/ui";
 
 let isRefreshing = false;
 let refreshSubscribers: ((token: string) => void)[] = [];
@@ -30,7 +31,6 @@ apiClient.interceptors.response.use(
 
     if (response?.status === 401 && !originalRequest._retry) {
       if (isRefreshing) {
-        // If a refresh is already in progress, wait for it to finish
         return new Promise((resolve) => {
           refreshSubscribers.push((token: string) => {
             originalRequest.headers.Authorization = `Bearer ${token}`;
@@ -60,11 +60,22 @@ apiClient.interceptors.response.use(
         return apiClient(originalRequest);
       } catch (refreshError) {
         isRefreshing = false;
+
         const authStore = useAuthStore();
         authStore.logout();
+
+        const uiStore = useUIStore();
+        uiStore.isLoginModalOpen = true;
+
         return Promise.reject(refreshError);
       }
     }
+
+    if (response?.status === 400) {
+      const uiStore = useUIStore();
+      uiStore.isLoginModalOpen = true;
+    }
+
     return Promise.reject(error);
   },
 );

@@ -24,7 +24,7 @@
       variant="tonal"
       class="mb-4"
     >
-      {{ inventory.error }}
+      {{ "Error loading inventory" }}
     </v-alert>
 
     <div v-else-if="inventory.currentDirectoryContent.length > 0">
