@@ -72,16 +72,19 @@
       </v-col>
     </v-row>
   </v-container>
+
   <UploadWarningModal
     v-model="showWarningModal"
     :number-of-files="numberOfFiles"
-    @confirm="() => handleFilesUploadConfirm(pendingFiles)"
+    @confirm="handleFilesUploadConfirm"
+    @cancel="handleFilesUploadCancel"
   />
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import { useUploadStore } from "@/stores/uploads";
+import { useWakeLock } from "@/utils/useWakeLock";
 import UploadZone from "./components/UploadZone.vue";
 import UploadWarningModal from "./components/UploadWarningModal.vue";
 
@@ -91,23 +94,47 @@ interface UploadFileItem {
 }
 
 const uploadStore = useUploadStore();
+const { requestWakeLock, releaseWakeLock } = useWakeLock();
 
 const showWarningModal = ref<boolean>(false);
 const numberOfFiles = ref<number>(0);
 const pendingFiles = ref<UploadFileItem[]>([]);
 
-const handleFilesSelected = (payload: { file: File; path: string }[]) => {
+const handleFilesSelected = (payload: UploadFileItem[]) => {
   pendingFiles.value = payload;
-  numberOfFiles.value = payload.filter((item) =>
-    item.file.type.startsWith("image/"),
-  ).length;
+
+  const processableFiles = payload.filter((item) => {
+    const name = item.file.name;
+    return !name.startsWith(".") && name !== "Thumbs.db";
+  });
+
+  numberOfFiles.value = processableFiles.length;
   showWarningModal.value = true;
 };
 
-const handleFilesUploadConfirm = (payload: { file: File; path: string }[]) => {
-  uploadStore.addUploadTasks(payload);
+const handleFilesUploadConfirm = () => {
   showWarningModal.value = false;
+
+  requestWakeLock();
+
+  uploadStore.addUploadTasks(pendingFiles.value);
+  pendingFiles.value = [];
 };
+
+const handleFilesUploadCancel = () => {
+  showWarningModal.value = false;
+  pendingFiles.value = [];
+  numberOfFiles.value = 0;
+};
+
+watch(
+  () => uploadStore.isProcessing,
+  (processing) => {
+    if (!processing) {
+      releaseWakeLock();
+    }
+  },
+);
 </script>
 
 <style scoped>
