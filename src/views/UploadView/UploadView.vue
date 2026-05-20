@@ -72,16 +72,41 @@
       </v-col>
     </v-row>
   </v-container>
+  <UploadWarningModal
+    v-model="showWarningModal"
+    :number-of-files="numberOfFiles"
+    @confirm="() => handleFilesUploadConfirm(pendingFiles)"
+  />
 </template>
 
 <script setup lang="ts">
+import { ref } from "vue";
 import { useUploadStore } from "@/stores/uploads";
 import UploadZone from "./components/UploadZone.vue";
+import UploadWarningModal from "./components/UploadWarningModal.vue";
+
+interface UploadFileItem {
+  file: File;
+  path: string;
+}
 
 const uploadStore = useUploadStore();
 
+const showWarningModal = ref<boolean>(false);
+const numberOfFiles = ref<number>(0);
+const pendingFiles = ref<UploadFileItem[]>([]);
+
 const handleFilesSelected = (payload: { file: File; path: string }[]) => {
+  pendingFiles.value = payload;
+  numberOfFiles.value = payload.filter((item) =>
+    item.file.type.startsWith("image/"),
+  ).length;
+  showWarningModal.value = true;
+};
+
+const handleFilesUploadConfirm = (payload: { file: File; path: string }[]) => {
   uploadStore.addUploadTasks(payload);
+  showWarningModal.value = false;
 };
 </script>
 

@@ -1,5 +1,6 @@
 <template>
   <div class="dropzone-container">
+    <!-- Removed the input from inside this div -->
     <div
       class="dropzone"
       :class="{ 'is-dragging': isDragging }"
@@ -13,15 +14,16 @@
         <v-icon size="64" color="primary">mdi-cloud-upload-outline</v-icon>
         <p>Drag & Drop files or folders here or click to browse</p>
       </div>
-
-      <input
-        ref="fileInput"
-        type="file"
-        multiple
-        @change="handleFileSelect"
-        class="hidden-input"
-      />
     </div>
+
+    <!-- Placed outside the dropzone to prevent click event bubbling loops -->
+    <input
+      ref="fileInput"
+      type="file"
+      multiple
+      @change="handleFileSelect"
+      class="hidden-input"
+    />
   </div>
 </template>
 
@@ -80,7 +82,7 @@ const handleFileSelect = (e: Event) => {
     }));
     emit("files-selected", filesArray);
   }
-  target.value = "";
+  target.value = ""; // Resets the input selection perfectly
 };
 
 const triggerFileInput = () => fileInput.value?.click();
@@ -89,6 +91,7 @@ const triggerFileInput = () => fileInput.value?.click();
 <style scoped>
 .dropzone-container {
   display: flex;
+  flex-direction: column; /* Changed to handle stacking sibling input cleanly */
   justify-content: center;
   align-items: center;
   min-height: 150px;
