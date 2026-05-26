@@ -201,6 +201,12 @@ export const useUploadStore = defineStore("upload", () => {
     }
   };
 
+  const clearUploadQueue = () => {
+    uploadQueue.value = {};
+    recentLogs.value = [];
+    signatureCache.value = {};
+  };
+
   return {
     uploadQueue,
     recentLogs,
@@ -210,5 +216,6 @@ export const useUploadStore = defineStore("upload", () => {
     overallProgress,
     isProcessing,
     addUploadTasks,
+    clearUploadQueue,
   };
 });

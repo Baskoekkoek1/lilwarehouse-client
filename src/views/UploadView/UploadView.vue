@@ -79,14 +79,24 @@
     @confirm="handleFilesUploadConfirm"
     @cancel="handleFilesUploadCancel"
   />
+
+  <UploadSuccessModal
+    v-model="showSuccessModal"
+    :number-of-files="uploadStore.processedCount"
+    :error-count="uploadStore.errorCount"
+    @goToInventory="handleGoToInventory"
+    @reset="handleResetEngine"
+  />
 </template>
 
 <script setup lang="ts">
 import { ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import { useUploadStore } from "@/stores/uploads";
 import { useWakeLock } from "@/utils/useWakeLock";
 import UploadZone from "./components/UploadZone.vue";
 import UploadWarningModal from "./components/UploadWarningModal.vue";
+import UploadSuccessModal from "./components/UploadSuccessModal.vue";
 
 interface UploadFileItem {
   file: File;
@@ -95,8 +105,10 @@ interface UploadFileItem {
 
 const uploadStore = useUploadStore();
 const { requestWakeLock, releaseWakeLock } = useWakeLock();
+const router = useRouter();
 
 const showWarningModal = ref<boolean>(false);
+const showSuccessModal = ref<boolean>(false);
 const numberOfFiles = ref<number>(0);
 const pendingFiles = ref<UploadFileItem[]>([]);
 
@@ -127,11 +139,30 @@ const handleFilesUploadCancel = () => {
   numberOfFiles.value = 0;
 };
 
+const handleGoToInventory = () => {
+  showSuccessModal.value = false;
+  uploadStore.clearUploadQueue();
+  router.push({ name: "Inventory" });
+};
+
+const handleResetEngine = () => {
+  showSuccessModal.value = false;
+  uploadStore.clearUploadQueue();
+};
 watch(
   () => uploadStore.isProcessing,
   (processing) => {
     if (!processing) {
       releaseWakeLock();
+
+      const totalEvaluated =
+        uploadStore.processedCount + uploadStore.errorCount;
+      if (
+        uploadStore.totalCount > 0 &&
+        totalEvaluated === uploadStore.totalCount
+      ) {
+        showSuccessModal.value = true;
+      }
     }
   },
 );
