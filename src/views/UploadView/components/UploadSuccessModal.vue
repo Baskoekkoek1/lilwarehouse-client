@@ -41,7 +41,7 @@
           variant="text"
           color="grey-darken-1"
           block
-          @click="emit('reset')"
+          @click="emit('closeModal')"
         >
           Upload More Files
         </v-btn>
@@ -60,6 +60,6 @@ const dialogVisible = defineModel<boolean>({ required: true });
 
 const emit = defineEmits<{
   (e: "goToInventory"): void;
-  (e: "reset"): void;
+  (e: "closeModal"): void;
 }>();
 </script>

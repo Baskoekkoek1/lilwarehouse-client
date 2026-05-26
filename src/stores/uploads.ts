@@ -201,6 +201,30 @@ export const useUploadStore = defineStore("upload", () => {
     }
   };
 
+  const retryFailedTasks = () => {
+    addLog("Gathering failed tasks for retry...", "info");
+
+    let retriedCount = 0;
+
+    Object.values(uploadQueue.value).forEach((task) => {
+      if (task.status === "ERROR") {
+        task.status = "PENDING";
+        task.progress = 0;
+        task.error = undefined;
+        retriedCount++;
+      }
+    });
+
+    if (retriedCount > 0) {
+      addLog(`Re-queueing ${retriedCount} failed tasks.`, "info");
+      if (!isProcessing.value) {
+        startMigration();
+      }
+    } else {
+      addLog("No failed tasks found to retry.", "info");
+    }
+  };
+
   const clearUploadQueue = () => {
     uploadQueue.value = {};
     recentLogs.value = [];
@@ -216,6 +240,7 @@ export const useUploadStore = defineStore("upload", () => {
     overallProgress,
     isProcessing,
     addUploadTasks,
+    retryFailedTasks,
     clearUploadQueue,
   };
 });

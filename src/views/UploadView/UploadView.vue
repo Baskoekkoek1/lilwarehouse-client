@@ -32,13 +32,29 @@
             class="mb-6"
           />
 
-          <div class="stats-grid">
+          <div class="stats-grid d-flex justify-space-between align-center">
             <div class="stat-item">
               <div class="text-caption text-grey">Processed</div>
               <div class="text-h6">{{ uploadStore.processedCount }}</div>
             </div>
+
             <div class="stat-item text-right">
-              <div class="text-caption text-grey">Errors</div>
+              <div
+                class="text-caption text-grey d-flex align-center justify-end gap-1"
+              >
+                <v-btn
+                  v-if="uploadStore.errorCount > 0 && !uploadStore.isProcessing"
+                  size="x-small"
+                  color="error"
+                  variant="text"
+                  prepend-icon="mdi-refresh"
+                  class="mr-1 px-1"
+                  @click="uploadStore.retryFailedTasks()"
+                >
+                  Retry
+                </v-btn>
+                <span>Errors</span>
+              </div>
               <div
                 class="text-h6"
                 :class="{ 'text-error': uploadStore.errorCount > 0 }"
@@ -85,7 +101,7 @@
     :number-of-files="uploadStore.processedCount"
     :error-count="uploadStore.errorCount"
     @goToInventory="handleGoToInventory"
-    @reset="handleResetEngine"
+    @closeModal="handleCloseModal"
   />
 </template>
 
@@ -145,9 +161,8 @@ const handleGoToInventory = () => {
   router.push({ name: "Inventory" });
 };
 
-const handleResetEngine = () => {
+const handleCloseModal = () => {
   showSuccessModal.value = false;
-  uploadStore.clearUploadQueue();
 };
 watch(
   () => uploadStore.isProcessing,
