@@ -29,8 +29,23 @@ import NavBar from "./components/layout/NavBar/NavBar.vue";
 import LoginModal from "./components/auth/LoginModal/LoginModal.vue";
 // import CameraLoadingSpinner from './components/ui/CameraLoadingSpinner.vue';
 import { useUIStore } from "./stores/ui";
+import { useAuthStore } from "./stores/auth.ts";
+import { onMounted } from "vue";
 
 const uiStore = useUIStore();
+const authStore = useAuthStore();
+
+onMounted(async () => {
+  const localToken = localStorage.getItem("lil_token");
+
+  if (localToken) {
+    try {
+      await authStore.fetchUserProfile();
+    } catch (error) {
+      console.error("Failed to fetch user profile:", error);
+    }
+  }
+});
 </script>
 
 <style>

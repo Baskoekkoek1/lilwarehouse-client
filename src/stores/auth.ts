@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import { useInventoryStore } from "./inventory";
 import { useJobsStore } from "./jobs";
+import { useUIStore } from "./ui";
 import apiClient from "../api/client";
 
 interface User {
@@ -21,12 +22,12 @@ export const useAuthStore = defineStore("auth", () => {
   const isAuthenticated = computed(() => !!token.value);
 
   // Actions
-  function setToken(newToken: string) {
+  const setToken = (newToken: string) => {
     token.value = newToken;
     localStorage.setItem("lil_token", newToken);
-  }
+  };
 
-  async function login(username: string, password: string) {
+  const login = async (username: string, password: string) => {
     loading.value = true;
     error.value = null;
 
@@ -45,9 +46,28 @@ export const useAuthStore = defineStore("auth", () => {
     } finally {
       loading.value = false;
     }
-  }
+  };
 
-  function logout() {
+  const fetchUserProfile = async () => {
+    if (!token.value) return;
+
+    loading.value = true;
+    try {
+      const response = await apiClient.get("/me");
+      user.value = response.data.user;
+    } catch (error) {
+      console.error("Failed to fetch user profile:", error);
+
+      logout();
+
+      const uiStore = useUIStore();
+      uiStore.isLoginModalOpen = true;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const logout = () => {
     const inventory = useInventoryStore();
     const jobs = useJobsStore();
 
@@ -57,7 +77,7 @@ export const useAuthStore = defineStore("auth", () => {
 
     inventory.reset();
     jobs.reset();
-  }
+  };
 
   return {
     token,
@@ -68,5 +88,6 @@ export const useAuthStore = defineStore("auth", () => {
     login,
     logout,
     setToken,
+    fetchUserProfile,
   };
 });

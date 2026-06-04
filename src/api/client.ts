@@ -29,6 +29,7 @@ apiClient.interceptors.response.use(
     const { config, response } = error;
     const originalRequest = config;
 
+    // Handle Access Token Expiration
     if (response?.status === 401 && !originalRequest._retry) {
       if (isRefreshing) {
         return new Promise((resolve) => {
@@ -45,6 +46,7 @@ apiClient.interceptors.response.use(
       try {
         const authStore = useAuthStore();
 
+        // Issue background token refresh request
         const { data } = await axios.post(
           `${import.meta.env.VITE_API_URL}/auth/refresh`,
           {},
@@ -58,7 +60,7 @@ apiClient.interceptors.response.use(
         onRefreshed(newToken);
 
         return apiClient(originalRequest);
-      } catch (refreshError) {
+      } catch (refreshServerError) {
         isRefreshing = false;
 
         const authStore = useAuthStore();
@@ -67,13 +69,8 @@ apiClient.interceptors.response.use(
         const uiStore = useUIStore();
         uiStore.isLoginModalOpen = true;
 
-        return Promise.reject(refreshError);
+        return Promise.reject(refreshServerError);
       }
-    }
-
-    if (response?.status === 400) {
-      const uiStore = useUIStore();
-      uiStore.isLoginModalOpen = true;
     }
 
     return Promise.reject(error);
