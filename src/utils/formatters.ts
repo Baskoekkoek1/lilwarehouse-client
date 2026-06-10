@@ -2,8 +2,11 @@ export const formatBytes = (
   bytes: number | string | undefined,
   decimals = 2,
 ): string => {
-  const numBytes = typeof bytes === "string" ? parseInt(bytes) : bytes;
-  if (!numBytes || numBytes === 0) return "0 B";
+  if (bytes === undefined || bytes === null) return "0 B";
+
+  const numBytes = typeof bytes === "string" ? parseInt(bytes, 10) : bytes;
+
+  if (isNaN(numBytes) || numBytes === 0) return "0 B";
 
   const k = 1024;
   const dm = decimals < 0 ? 0 : decimals;
@@ -18,6 +21,8 @@ export const formatDate = (date: string | Date | undefined): string => {
   if (!date) return "--";
 
   const d = typeof date === "string" ? new Date(date) : date;
+
+  if (isNaN(d.getTime())) return "--";
 
   return new Intl.DateTimeFormat("en-US", {
     month: "short",

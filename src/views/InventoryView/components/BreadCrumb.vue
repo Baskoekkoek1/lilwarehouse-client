@@ -7,7 +7,7 @@
     <template v-slot:title="{ item }">
       <span
         class="text-body-2"
-        :class="{ 'font-weight-bold primary--text': !item.disabled }"
+        :class="{ 'font-weight-bold text-primary': !item.disabled }"
         @click="!item.disabled && inventory.navigateTo((item as Crumb).rawPath)"
         style="cursor: pointer"
       >
@@ -34,21 +34,24 @@ const breadcrumbItems = computed(() => {
     {
       title: "Home",
       disabled: inventory.currentPath === "/",
-      rawPath: "/", // Custom property
+      rawPath: "/",
     },
   ];
 
   if (inventory.currentPath === "/") return items;
 
   const parts = inventory.currentPath.split("/").filter(Boolean);
-  let cumulativePath = "";
+  const cumulativeSegments: string[] = [];
 
   parts.forEach((part, index) => {
-    cumulativePath += `/${part}`;
+    cumulativeSegments.push(part);
+
+    const joinedPath = cumulativeSegments.join("/");
+
     items.push({
       title: part,
-      disabled: index === parts.length - 1, //disable last (current) item,
-      rawPath: cumulativePath,
+      disabled: index === parts.length - 1,
+      rawPath: joinedPath,
     });
   });
 
