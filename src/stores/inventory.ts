@@ -18,6 +18,7 @@ export interface VirtualItem {
   file_name: string;
   type: "file" | "folder";
   file_size?: string | number;
+  b2_file_id?: string;
   status?: string;
   upload_date?: string;
 }
@@ -29,6 +30,7 @@ export const useInventoryStore = defineStore("inventory", () => {
   const currentPath = ref("/");
   const loading = ref(false);
   const error = ref<string | null>(null);
+  const downloadingFileId = ref<string | null>(null);
 
   const currentOffset = ref(0);
   const LIMIT = 50;
@@ -51,6 +53,7 @@ export const useInventoryStore = defineStore("inventory", () => {
         file_name: item.file_name,
         type: "file",
         file_size: item.file_size,
+        b2_file_id: item.b2_file_id,
         status: item.status,
         upload_date: item.upload_date,
       }));
@@ -151,21 +154,52 @@ export const useInventoryStore = defineStore("inventory", () => {
     }
   };
 
-  function setInventory(newItems: InventoryItem[]) {
+  const downloadFile = async (b2_file_id: string | undefined) => {
+    if (!b2_file_id) return;
+    downloadingFileId.value = b2_file_id;
+    try {
+      const response = await apiClient.get(
+        `/downloads/presigned/${b2_file_id}`,
+      );
+      const downloadUrl = response.data?.downloadUrl;
+      if (!downloadUrl) {
+        throw new Error(
+          "Presigned download link was missing from server response.",
+        );
+      }
+
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.setAttribute("download", "");
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err: any) {
+      console.error("File Download aborted:", err);
+      error.value =
+        err.response?.data?.message ||
+        "Failed to generate file download target link.";
+    } finally {
+      downloadingFileId.value = null;
+    }
+  };
+
+  const setInventory = (newItems: InventoryItem[]) => {
     items.value = newItems;
-  }
+  };
 
-  function setError(message: string | null) {
+  const setError = (message: string | null) => {
     error.value = message;
-  }
+  };
 
-  function clearFilesStream() {
+  const clearFilesStream = () => {
     items.value = [];
     currentOffset.value = 0;
     hasMoreFiles.value = true;
-  }
+  };
 
-  function reset() {
+  const reset = () => {
     items.value = [];
     folders.value = [];
     currentPath.value = "/";
@@ -173,13 +207,13 @@ export const useInventoryStore = defineStore("inventory", () => {
     error.value = null;
     currentOffset.value = 0;
     hasMoreFiles.value = true;
-  }
+  };
 
-  function navigateTo(path: string) {
+  const navigateTo = (path: string) => {
     currentPath.value = path;
     clearFilesStream();
     fetchCurrentDirectory();
-  }
+  };
 
   return {
     items,
@@ -189,6 +223,7 @@ export const useInventoryStore = defineStore("inventory", () => {
     error,
     hasMoreFiles,
     currentDirectoryContent,
+    downloadingFileId,
     setInventory,
     fetchFoldersDirectory,
     fetchCurrentDirectory,
@@ -196,5 +231,6 @@ export const useInventoryStore = defineStore("inventory", () => {
     clearFilesStream,
     reset,
     navigateTo,
+    downloadFile,
   };
 });
