@@ -10,6 +10,7 @@
           <th class="text-uppercase text-caption font-weight-bold text-right">
             Uploaded
           </th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -46,15 +47,28 @@
             {{ formatDate(item.upload_date) }}
           </td>
           <td>
-            <button @click="() => handleDownloadClick(item.b2_file_id)">
-              <v-progress-circular
-                v-if="inventory.downloadingFileId === item.b2_file_id"
-                indeterminate
-                size="20"
-                width="2"
-                color="primary"
-              />
-              <v-icon v-else icon="mdi-download" color="primary" />
+            <button @click.stop="handleDownloadClick(item)">
+              <template v-if="item.type === 'folder'">
+                <v-progress-circular
+                  v-if="isFolderZipping(item.file_name)"
+                  indeterminate
+                  size="20"
+                  width="2"
+                  color="primary"
+                />
+                <v-icon v-else icon="mdi-folder-download" color="primary" />
+              </template>
+
+              <template v-else>
+                <v-progress-circular
+                  v-if="inventory.downloadingFileId === item.b2_file_id"
+                  indeterminate
+                  size="20"
+                  width="2"
+                  color="primary"
+                />
+                <v-icon v-else icon="mdi-download" color="primary" />
+              </template>
             </button>
           </td>
         </tr>
@@ -76,11 +90,13 @@
 </template>
 
 <script setup lang="ts">
-import { useInventoryStore } from "@/stores/inventory";
+import { useInventoryStore, type VirtualItem } from "@/stores/inventory";
+import { useJobsStore } from "@/stores/jobs";
 import { formatBytes, formatDate } from "@/utils/formatters";
 import { getFileIcon } from "@/utils/fileIcons";
 
 const inventory = useInventoryStore();
+const jobsStore = useJobsStore();
 
 const handleItemClick = (item: any) => {
   if (item.type === "folder") {
@@ -94,8 +110,29 @@ const handleItemClick = (item: any) => {
   }
 };
 
-const handleDownloadClick = (b2_file_id: string | undefined) => {
-  inventory.downloadFile(b2_file_id);
+const handleDownloadClick = (item: VirtualItem) => {
+  if (item.type === "folder") {
+    const basePath = inventory.currentPath === "/" ? "" : inventory.currentPath;
+
+    const fullFolderPath = basePath
+      ? `${basePath}/${item.file_name}/`
+      : `${item.file_name}/`;
+
+    jobsStore.downloadFolder(fullFolderPath);
+  } else if (item.type === "file" && item.b2_file_id) {
+    inventory.downloadFile(item.b2_file_id);
+  }
+};
+
+const isFolderZipping = (fileName: string) => {
+  const basePath = inventory.currentPath === "/" ? "" : inventory.currentPath;
+  const fullFolderPath = basePath ? `${basePath}/${fileName}/` : `${fileName}/`;
+
+  return jobsStore.activeJobs.some(
+    (job) =>
+      job.folder_name === fullFolderPath &&
+      (job.status === "RUNNING" || job.status === "PENDING"),
+  );
 };
 </script>
 
