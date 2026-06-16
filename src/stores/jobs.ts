@@ -5,7 +5,6 @@ import { ref } from "vue";
 export interface Job {
   id: string;
   folder_name: string;
-  // FIXED: Added "PROCESSING" here so TypeScript recognizes it as a valid state across the store
   status: "PENDING" | "RUNNING" | "PROCESSING" | "COMPLETED" | "FAILED";
   created_at?: string;
 }
@@ -81,7 +80,6 @@ export const useJobsStore = defineStore("jobs", () => {
     setPolling(true);
 
     pollingIntervalId = setInterval(async () => {
-      // CLEANED UP: Since the type is fixed above, you can directly check j.status without string casting
       const unfinishedJobs = activeJobs.value.filter(
         (j) =>
           j.status === "PENDING" ||
