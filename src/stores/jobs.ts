@@ -6,7 +6,7 @@ export interface Job {
   id: string;
   folder_name: string;
   status: "PENDING" | "RUNNING" | "PROCESSING" | "COMPLETED" | "FAILED";
-  created_at?: string;
+  created_at: string;
 }
 
 export const useJobsStore = defineStore("jobs", () => {
@@ -18,8 +18,21 @@ export const useJobsStore = defineStore("jobs", () => {
 
   let pollingIntervalId: ReturnType<typeof setInterval> | null = null;
 
+  // Helpers
+
+  const isJobExpired = (job: Job): boolean => {
+    const createdAt = new Date(job.created_at);
+    const now = new Date();
+    const diffInHours =
+      (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
+    return diffInHours > 24 * 3;
+  };
+
   // Actions
   const addJob = (job: Job): void => {
+    activeJobs.value = activeJobs.value.filter(
+      (j) => j.folder_name !== job.folder_name,
+    );
     activeJobs.value.push(job);
   };
 
@@ -74,6 +87,46 @@ export const useJobsStore = defineStore("jobs", () => {
     }
   };
 
+  const fetchRecentJobs = async () => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const response = await apiClient.get("/jobs");
+      const rawJobs =
+        response.data?.data?.filter((job: Job) => !isJobExpired(job)) || [];
+
+      const deduplicatedJobs: Job[] = [];
+      const seenFolders = new Set<string>();
+
+      for (const job of rawJobs) {
+        if (!seenFolders.has(job.folder_name)) {
+          seenFolders.add(job.folder_name);
+          deduplicatedJobs.push(job);
+        }
+      }
+
+      setJobs(deduplicatedJobs);
+
+      const runningJobs = deduplicatedJobs.filter(
+        (job: Job) =>
+          job.status === "PENDING" ||
+          job.status === "RUNNING" ||
+          job.status === "PROCESSING",
+      );
+
+      if (runningJobs.length > 0) {
+        startPollingForJobs();
+      }
+    } catch (err: any) {
+      console.error("Failed to fetch recent jobs:", err);
+      error.value =
+        err.response?.data?.message || "Failed to fetch recent jobs.";
+    } finally {
+      loading.value = false;
+    }
+  };
+
   const startPollingForJobs = () => {
     if (isPolling.value || pollingIntervalId) return;
 
@@ -100,10 +153,6 @@ export const useJobsStore = defineStore("jobs", () => {
 
             if (freshJobData?.status) {
               updateJobStatus(job.id, freshJobData.status);
-
-              if (freshJobData.status === "COMPLETED") {
-                await fetchCompletedZipLink(job.id);
-              }
             }
           } catch (err) {
             console.error(
@@ -117,9 +166,20 @@ export const useJobsStore = defineStore("jobs", () => {
     }, 2500);
   };
 
-  const fetchCompletedZipLink = async (jobId: string) => {
+  const fetchCompletedZipLink = async (fullFolderPath: string) => {
+    const activeJob = activeJobs.value.find(
+      (j) => j.folder_name === fullFolderPath && j.status === "COMPLETED",
+    );
+
+    if (!activeJob) {
+      console.warn(`No completed zip job found for path: ${fullFolderPath}`);
+      return;
+    }
+
     try {
-      const response = await apiClient.get(`/downloads/presigned/${jobId}`);
+      const response = await apiClient.get(
+        `/downloads/presigned/${activeJob.id}`,
+      );
       const downloadUrl = response.data?.downloadUrl;
 
       if (!downloadUrl) throw new Error("Zip archive link missing.");
@@ -164,5 +224,7 @@ export const useJobsStore = defineStore("jobs", () => {
     reset,
     downloadFolder,
     startPollingForJobs,
+    fetchRecentJobs,
+    fetchCompletedZipLink,
   };
 });

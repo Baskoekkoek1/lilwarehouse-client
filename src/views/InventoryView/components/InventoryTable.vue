@@ -50,13 +50,30 @@
             <button @click.stop="handleDownloadClick(item)">
               <template v-if="item.type === 'folder'">
                 <v-progress-circular
-                  v-if="isFolderZipping(item.file_name)"
+                  v-if="
+                    getFolderJobStatus(item.file_name) === 'PENDING' ||
+                    getFolderJobStatus(item.file_name) === 'PROCESSING'
+                  "
                   indeterminate
                   size="20"
                   width="2"
                   color="primary"
                 />
-                <v-icon v-else icon="mdi-folder-download" color="primary" />
+                <v-icon
+                  v-else-if="getFolderJobStatus(item.file_name) === 'COMPLETED'"
+                  icon="mdi-download-box"
+                  color="success"
+                />
+                <v-icon
+                  v-else-if="getFolderJobStatus(item.file_name) === 'IDLE'"
+                  icon="mdi-folder-download"
+                  color="primary"
+                />
+                <v-icon
+                  v-else-if="getFolderJobStatus(item.file_name) === 'FAILED'"
+                  icon="mdi-alert-circle"
+                  color="error"
+                />
               </template>
 
               <template v-else>
@@ -90,6 +107,7 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted } from "vue";
 import { useInventoryStore, type VirtualItem } from "@/stores/inventory";
 import { useJobsStore } from "@/stores/jobs";
 import { formatBytes, formatDate } from "@/utils/formatters";
@@ -111,29 +129,38 @@ const handleItemClick = (item: any) => {
 };
 
 const handleDownloadClick = (item: VirtualItem) => {
-  if (item.type === "folder") {
-    const basePath = inventory.currentPath === "/" ? "" : inventory.currentPath;
-
-    const fullFolderPath = basePath
-      ? `${basePath}/${item.file_name}/`
-      : `${item.file_name}/`;
-
-    jobsStore.downloadFolder(fullFolderPath);
-  } else if (item.type === "file" && item.b2_file_id) {
+  if (item.type === "file" && item.b2_file_id) {
     inventory.downloadFile(item.b2_file_id);
+    return;
+  }
+  if (item.type !== "folder") return;
+
+  const basePath = inventory.currentPath === "/" ? "" : inventory.currentPath;
+  const fullFolderPath = basePath
+    ? `${basePath}/${item.file_name}/`
+    : `${item.file_name}`;
+
+  const folderStatus = getFolderJobStatus(item.file_name);
+  if (folderStatus === "IDLE" || folderStatus === "FAILED") {
+    jobsStore.downloadFolder(fullFolderPath);
+  } else if (folderStatus === "COMPLETED") {
+    jobsStore.fetchCompletedZipLink(fullFolderPath);
   }
 };
 
-const isFolderZipping = (fileName: string) => {
+const getFolderJobStatus = (fileName: string): string => {
   const basePath = inventory.currentPath === "/" ? "" : inventory.currentPath;
-  const fullFolderPath = basePath ? `${basePath}/${fileName}/` : `${fileName}/`;
+  const fullFolderPath = basePath ? `${basePath}/${fileName}` : `${fileName}`;
 
-  return jobsStore.activeJobs.some(
-    (job) =>
-      job.folder_name === fullFolderPath &&
-      (job.status === "RUNNING" || job.status === "PENDING"),
+  const thisJob = jobsStore.activeJobs.find(
+    (j) => j.folder_name === fullFolderPath,
   );
+  return thisJob ? thisJob.status : "IDLE";
 };
+
+onMounted(() => {
+  jobsStore.fetchRecentJobs();
+});
 </script>
 
 <style scoped>
