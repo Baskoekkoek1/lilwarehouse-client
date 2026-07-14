@@ -52,6 +52,7 @@
               style="min-height: 36px"
             >
               <template v-if="item.type === 'folder'">
+                <!-- PENDING / QUEUED STATE -->
                 <template
                   v-if="getFolderJobStatus(item.file_name) === 'PENDING'"
                 >
@@ -64,8 +65,9 @@
                   />
                   <span
                     class="text-caption text-warning font-weight-medium mr-2"
-                    >Queued</span
                   >
+                    Queued
+                  </span>
                   <button
                     @click.stop="
                       jobsStore.cancelJob(getJob(item.file_name)!.id)
@@ -76,6 +78,7 @@
                   </button>
                 </template>
 
+                <!-- PROCESSING STATE -->
                 <template
                   v-else-if="
                     getFolderJobStatus(item.file_name) === 'PROCESSING' ||
@@ -120,6 +123,45 @@
                   </div>
                 </template>
 
+                <!-- CANCELLED STATE (TEXT + ICON RETRY) -->
+                <template
+                  v-else-if="getFolderJobStatus(item.file_name) === 'CANCELLED'"
+                >
+                  <span
+                    class="text-caption text-warning font-weight-medium mr-2"
+                  >
+                    Cancelled
+                  </span>
+                  <button
+                    @click.stop="handleDownloadClick(item)"
+                    class="action-btn"
+                  >
+                    <v-icon icon="mdi-refresh" color="warning" />
+                    <v-tooltip activator="parent" location="top">
+                      Try Again
+                    </v-tooltip>
+                  </button>
+                </template>
+
+                <!-- FAILED STATE -->
+                <template
+                  v-else-if="getFolderJobStatus(item.file_name) === 'FAILED'"
+                >
+                  <span class="text-caption text-error font-weight-medium mr-2">
+                    Failed
+                  </span>
+                  <button
+                    @click.stop="handleDownloadClick(item)"
+                    class="action-btn"
+                  >
+                    <v-icon icon="mdi-refresh" color="error" />
+                    <v-tooltip activator="parent" location="top">
+                      Try Again
+                    </v-tooltip>
+                  </button>
+                </template>
+
+                <!-- COMPLETED / IDLE STATE BUTTON -->
                 <button
                   v-else
                   @click.stop="handleDownloadClick(item)"
@@ -135,14 +177,10 @@
                     icon="mdi-folder-download"
                     color="primary"
                   />
-                  <v-icon
-                    v-else-if="getFolderJobStatus(item.file_name) === 'FAILED'"
-                    icon="mdi-alert-circle"
-                    color="error"
-                  />
                 </button>
               </template>
 
+              <!-- FILE DOWNLOAD -->
               <template v-else>
                 <button
                   @click.stop="handleDownloadClick(item)"
@@ -213,7 +251,11 @@ const handleDownloadClick = (item: VirtualItem) => {
     : `${item.file_name}`;
 
   const folderStatus = getFolderJobStatus(item.file_name);
-  if (folderStatus === "IDLE" || folderStatus === "FAILED") {
+  if (
+    folderStatus === "IDLE" ||
+    folderStatus === "FAILED" ||
+    folderStatus === "CANCELLED"
+  ) {
     jobsStore.downloadFolder(fullFolderPath);
   } else if (folderStatus === "COMPLETED") {
     jobsStore.fetchCompletedZipLink(fullFolderPath);

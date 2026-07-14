@@ -109,9 +109,9 @@ export const useJobsStore = defineStore("jobs", () => {
     error.value = null;
 
     try {
-      await apiClient.delete(`/jobs/${jobId}`);
+      await apiClient.patch(`/jobs/${jobId}`, { status: "CANCELLED" });
 
-      activeJobs.value = activeJobs.value.filter((j) => j.id !== jobId);
+      updateJobStatus(jobId, "CANCELLED");
 
       const remainingUnfinishedJobs = activeJobs.value.filter(
         (j) =>
@@ -138,7 +138,9 @@ export const useJobsStore = defineStore("jobs", () => {
     try {
       const response = await apiClient.get("/jobs");
       const rawJobs =
-        response.data?.data?.filter((job: Job) => !isJobExpired(job)) || [];
+        response.data?.data?.filter(
+          (job: Job) => !isJobExpired(job) && job.status !== "CANCELLED",
+        ) || [];
 
       const deduplicatedJobs: Job[] = [];
       const seenFolders = new Set<string>();
