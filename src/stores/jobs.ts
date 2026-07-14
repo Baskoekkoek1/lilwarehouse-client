@@ -5,8 +5,16 @@ import { ref } from "vue";
 export interface Job {
   id: string;
   folder_name: string;
-  status: "PENDING" | "RUNNING" | "PROCESSING" | "COMPLETED" | "FAILED";
+  status:
+    | "PENDING"
+    | "RUNNING"
+    | "PROCESSING"
+    | "COMPLETED"
+    | "FAILED"
+    | "CANCELLED";
   created_at: string;
+  total_files?: number;
+  processed_files?: number;
 }
 
 export const useJobsStore = defineStore("jobs", () => {
@@ -31,9 +39,19 @@ export const useJobsStore = defineStore("jobs", () => {
   // Actions
   const addJob = (job: Job): void => {
     activeJobs.value = activeJobs.value.filter(
-      (j) => j.folder_name !== job.folder_name,
+      (j) => j.folder_name !== job.folder_name && j.id !== job.id,
     );
-    activeJobs.value.push(job);
+    activeJobs.value.unshift(job);
+  };
+
+  const updateJobFromPoll = (freshJob: Job): void => {
+    const index = activeJobs.value.findIndex((j) => j.id === freshJob.id);
+    if (index !== -1) {
+      activeJobs.value[index] = {
+        ...activeJobs.value[index],
+        ...freshJob,
+      };
+    }
   };
 
   const updateJobStatus = (jobId: string, status: Job["status"]): void => {
@@ -84,6 +102,32 @@ export const useJobsStore = defineStore("jobs", () => {
         "Failed to initiate folder compression task.";
     } finally {
       loading.value = false;
+    }
+  };
+
+  const cancelJob = async (jobId: string) => {
+    error.value = null;
+
+    try {
+      await apiClient.delete(`/jobs/${jobId}`);
+
+      activeJobs.value = activeJobs.value.filter((j) => j.id !== jobId);
+
+      const remainingUnfinishedJobs = activeJobs.value.filter(
+        (j) =>
+          j.status === "PENDING" ||
+          j.status === "RUNNING" ||
+          j.status === "PROCESSING",
+      );
+
+      if (remainingUnfinishedJobs.length === 0) {
+        stopPolling();
+      }
+    } catch (err: any) {
+      console.error(`Failed to terminate job ${jobId}:`, err);
+      error.value =
+        err.response?.data?.message ||
+        "Failed to cancel the active download job.";
     }
   };
 
@@ -151,15 +195,27 @@ export const useJobsStore = defineStore("jobs", () => {
             const response = await apiClient.get(`/jobs/${job.id}`);
             const freshJobData = response.data?.data;
 
-            if (freshJobData?.status) {
-              updateJobStatus(job.id, freshJobData.status);
+            if (freshJobData) {
+              if (freshJobData.status === "CANCELLED") {
+                activeJobs.value = activeJobs.value.filter(
+                  (j) => j.id !== job.id,
+                );
+              } else {
+                updateJobFromPoll(freshJobData);
+              }
             }
-          } catch (err) {
-            console.error(
-              `Failed lookup metrics for job execution ${job.id}:`,
-              err,
-            );
-            updateJobStatus(job.id, "FAILED");
+          } catch (err: any) {
+            if (err.response?.status === 404) {
+              activeJobs.value = activeJobs.value.filter(
+                (j) => j.id !== job.id,
+              );
+            } else {
+              console.error(
+                `Failed lookup metrics for job execution ${job.id}:`,
+                err,
+              );
+              updateJobStatus(job.id, "FAILED");
+            }
           }
         }),
       );
@@ -218,11 +274,13 @@ export const useJobsStore = defineStore("jobs", () => {
     error,
     addJob,
     updateJobStatus,
+    updateJobFromPoll,
     setJobs,
     setPolling,
     setError,
     reset,
     downloadFolder,
+    cancelJob,
     startPollingForJobs,
     fetchRecentJobs,
     fetchCompletedZipLink,

@@ -46,47 +46,119 @@
           <td class="text-right text-grey-lighten-1 text-caption">
             {{ formatDate(item.upload_date) }}
           </td>
-          <td>
-            <button @click.stop="handleDownloadClick(item)">
+          <td class="text-right" style="width: 160px">
+            <div
+              class="d-flex align-center justify-end w-100 pe-2"
+              style="min-height: 36px"
+            >
               <template v-if="item.type === 'folder'">
-                <v-progress-circular
-                  v-if="
-                    getFolderJobStatus(item.file_name) === 'PENDING' ||
-                    getFolderJobStatus(item.file_name) === 'PROCESSING'
+                <template
+                  v-if="getFolderJobStatus(item.file_name) === 'PENDING'"
+                >
+                  <v-progress-circular
+                    indeterminate
+                    size="18"
+                    width="2"
+                    color="warning"
+                    class="mr-2"
+                  />
+                  <span
+                    class="text-caption text-warning font-weight-medium mr-2"
+                    >Queued</span
+                  >
+                  <button
+                    @click.stop="
+                      jobsStore.cancelJob(getJob(item.file_name)!.id)
+                    "
+                    class="action-btn"
+                  >
+                    <v-icon icon="mdi-close-circle" color="error" size="18" />
+                  </button>
+                </template>
+
+                <template
+                  v-else-if="
+                    getFolderJobStatus(item.file_name) === 'PROCESSING' ||
+                    getFolderJobStatus(item.file_name) === 'RUNNING'
                   "
-                  indeterminate
-                  size="20"
-                  width="2"
-                  color="primary"
-                />
-                <v-icon
-                  v-else-if="getFolderJobStatus(item.file_name) === 'COMPLETED'"
-                  icon="mdi-download-box"
-                  color="success"
-                />
-                <v-icon
-                  v-else-if="getFolderJobStatus(item.file_name) === 'IDLE'"
-                  icon="mdi-folder-download"
-                  color="primary"
-                />
-                <v-icon
-                  v-else-if="getFolderJobStatus(item.file_name) === 'FAILED'"
-                  icon="mdi-alert-circle"
-                  color="error"
-                />
+                >
+                  <div
+                    class="w-100 flex-grow-1 mr-2 text-left d-flex align-center ga-2"
+                    style="max-width: 140px"
+                  >
+                    <v-progress-linear
+                      v-if="!getJob(item.file_name)?.total_files"
+                      indeterminate
+                      color="primary"
+                      height="12"
+                      rounded
+                      striped
+                    />
+                    <v-progress-linear
+                      v-else
+                      :model-value="getJobProgress(item.file_name)"
+                      color="primary"
+                      height="12"
+                      rounded
+                      striped
+                    >
+                      <template v-slot:default="{ value }">
+                        <strong class="text-white" style="font-size: 8px"
+                          >{{ value }}%</strong
+                        >
+                      </template>
+                    </v-progress-linear>
+
+                    <button
+                      @click.stop="
+                        jobsStore.cancelJob(getJob(item.file_name)!.id)
+                      "
+                      class="action-btn ml-1"
+                    >
+                      <v-icon icon="mdi-close-circle" color="error" size="18" />
+                    </button>
+                  </div>
+                </template>
+
+                <button
+                  v-else
+                  @click.stop="handleDownloadClick(item)"
+                  class="action-btn"
+                >
+                  <v-icon
+                    v-if="getFolderJobStatus(item.file_name) === 'COMPLETED'"
+                    icon="mdi-download-box"
+                    color="success"
+                  />
+                  <v-icon
+                    v-else-if="getFolderJobStatus(item.file_name) === 'IDLE'"
+                    icon="mdi-folder-download"
+                    color="primary"
+                  />
+                  <v-icon
+                    v-else-if="getFolderJobStatus(item.file_name) === 'FAILED'"
+                    icon="mdi-alert-circle"
+                    color="error"
+                  />
+                </button>
               </template>
 
               <template v-else>
-                <v-progress-circular
-                  v-if="inventory.downloadingFileId === item.b2_file_id"
-                  indeterminate
-                  size="20"
-                  width="2"
-                  color="primary"
-                />
-                <v-icon v-else icon="mdi-download" color="primary" />
+                <button
+                  @click.stop="handleDownloadClick(item)"
+                  class="action-btn"
+                >
+                  <v-progress-circular
+                    v-if="inventory.downloadingFileId === item.b2_file_id"
+                    indeterminate
+                    size="20"
+                    width="2"
+                    color="primary"
+                  />
+                  <v-icon v-else icon="mdi-download" color="primary" />
+                </button>
               </template>
-            </button>
+            </div>
           </td>
         </tr>
       </tbody>
@@ -109,7 +181,7 @@
 <script setup lang="ts">
 import { onMounted } from "vue";
 import { useInventoryStore, type VirtualItem } from "@/stores/inventory";
-import { useJobsStore } from "@/stores/jobs";
+import { useJobsStore, type Job } from "@/stores/jobs";
 import { formatBytes, formatDate } from "@/utils/formatters";
 import { getFileIcon } from "@/utils/fileIcons";
 
@@ -137,7 +209,7 @@ const handleDownloadClick = (item: VirtualItem) => {
 
   const basePath = inventory.currentPath === "/" ? "" : inventory.currentPath;
   const fullFolderPath = basePath
-    ? `${basePath}/${item.file_name}/`
+    ? `${basePath}/${item.file_name}`
     : `${item.file_name}`;
 
   const folderStatus = getFolderJobStatus(item.file_name);
@@ -148,14 +220,36 @@ const handleDownloadClick = (item: VirtualItem) => {
   }
 };
 
-const getFolderJobStatus = (fileName: string): string => {
+const getJob = (fileName: string): Job | undefined => {
   const basePath = inventory.currentPath === "/" ? "" : inventory.currentPath;
   const fullFolderPath = basePath ? `${basePath}/${fileName}` : `${fileName}`;
 
-  const thisJob = jobsStore.activeJobs.find(
+  const matchingJobs = jobsStore.activeJobs.filter(
     (j) => j.folder_name === fullFolderPath,
   );
+
+  if (matchingJobs.length === 0) return undefined;
+
+  return matchingJobs.reduce((latest, current) =>
+    new Date(current.created_at) > new Date(latest.created_at)
+      ? current
+      : latest,
+  );
+};
+
+const getFolderJobStatus = (fileName: string): string => {
+  const thisJob = getJob(fileName);
   return thisJob ? thisJob.status : "IDLE";
+};
+
+const getJobProgress = (fileName: string): number => {
+  const job = getJob(fileName);
+  if (!job || !job.total_files) return 0;
+
+  const processed = job.processed_files || 0;
+  const total = job.total_files || 1;
+
+  return Math.min(100, Math.round((processed / total) * 100));
 };
 
 onMounted(() => {
@@ -183,5 +277,15 @@ onMounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   display: inline-block;
+}
+
+.action-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  outline: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 </style>
