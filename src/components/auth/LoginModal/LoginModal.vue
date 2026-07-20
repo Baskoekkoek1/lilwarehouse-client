@@ -3,7 +3,6 @@
     <v-card rounded="lg">
       <v-tabs v-model="activeTab" color="primary" grow>
         <v-tab value="login">Login</v-tab>
-        <v-tab value="register">Register</v-tab>
       </v-tabs>
 
       <v-alert
@@ -30,13 +29,6 @@
         <v-window v-else v-model="activeTab" class="flex-grow-1 w-100">
           <v-window-item value="login" class="w-100">
             <login-form @success="dialogVisible = false" />
-          </v-window-item>
-
-          <v-window-item value="register" class="w-100">
-            <div class="text-center pa-10">
-              <v-icon size="64" icon="mdi-account-plus-outline" class="mb-4" />
-              <p>Registration logic for LilWarehouse is coming soon.</p>
-            </div>
           </v-window-item>
         </v-window>
       </v-card-text>
