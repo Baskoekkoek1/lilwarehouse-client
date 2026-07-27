@@ -3,6 +3,7 @@ import { ref, computed } from "vue";
 import axios from "axios";
 import * as UPLOAD from "@/types/uploads";
 import apiClient from "../api/client";
+import { useInventoryStore } from "./inventory";
 
 // --- INTERNAL TYPES ---
 type UploadTask = UPLOAD.UploadTask;
@@ -143,6 +144,8 @@ export const useUploadStore = defineStore("upload", () => {
 
         task!.status = "SUCCESS";
         addLog(`Finished: ${task!.fileName}`, "success");
+        const inventoryStore = useInventoryStore();
+        inventoryStore.clearFilesStream();
       } catch (err: unknown) {
         task!.status = "ERROR";
         const errorMsg =

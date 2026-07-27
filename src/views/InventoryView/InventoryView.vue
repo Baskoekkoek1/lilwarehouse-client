@@ -64,13 +64,10 @@ const handleRefresh = async () => {
 };
 
 onMounted(() => {
-  if (inventory.folders.length === 0) {
-    inventory.fetchFoldersDirectory();
-  }
+  inventory.fetchFoldersDirectory();
 
-  if (inventory.items.length === 0) {
-    inventory.fetchCurrentDirectory();
-  }
+  inventory.clearFilesStream();
+  inventory.fetchCurrentDirectory();
 });
 </script>
 
