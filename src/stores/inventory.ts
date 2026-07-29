@@ -31,6 +31,7 @@ export const useInventoryStore = defineStore("inventory", () => {
   const loading = ref(false);
   const error = ref<string | null>(null);
   const downloadingFileId = ref<string | null>(null);
+  const deletingFileId = ref<string | number | null>(null);
 
   const currentOffset = ref(0);
   const LIMIT = 50;
@@ -185,6 +186,21 @@ export const useInventoryStore = defineStore("inventory", () => {
     }
   };
 
+  const deleteFile = async (fileId: string | number) => {
+    deletingFileId.value = fileId;
+    error.value = null;
+    try {
+      await apiClient.delete(`/files/${fileId}`);
+      items.value = items.value.filter((item) => item.id !== String(fileId));
+    } catch (err: any) {
+      console.error("File deletion error:", err);
+      error.value = err.response?.data?.message || "Failed to delete file.";
+      throw err;
+    } finally {
+      deletingFileId.value = null;
+    }
+  };
+
   const setInventory = (newItems: InventoryItem[]) => {
     items.value = newItems;
   };
@@ -224,6 +240,7 @@ export const useInventoryStore = defineStore("inventory", () => {
     hasMoreFiles,
     currentDirectoryContent,
     downloadingFileId,
+    deletingFileId,
     setInventory,
     fetchFoldersDirectory,
     fetchCurrentDirectory,
@@ -232,5 +249,6 @@ export const useInventoryStore = defineStore("inventory", () => {
     reset,
     navigateTo,
     downloadFile,
+    deleteFile,
   };
 });

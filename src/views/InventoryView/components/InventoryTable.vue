@@ -48,7 +48,7 @@
           </td>
           <td class="text-right" style="width: 160px">
             <div
-              class="d-flex align-center justify-end w-100 pe-2"
+              class="d-flex align-center justify-end w-100 pe-2 ga-2"
               style="min-height: 36px"
             >
               <template v-if="item.type === 'folder'">
@@ -180,9 +180,13 @@
                 </button>
               </template>
 
-              <!-- FILE DOWNLOAD -->
+              <!-- FILE ACTIONS (DOWNLOAD & DELETE) -->
               <template v-else>
                 <button
+                  :disabled="
+                    inventory.downloadingFileId === item.b2_file_id ||
+                    inventory.deletingFileId === item.id
+                  "
                   @click.stop="handleDownloadClick(item)"
                   class="action-btn"
                 >
@@ -194,6 +198,30 @@
                     color="primary"
                   />
                   <v-icon v-else icon="mdi-download" color="primary" />
+                  <v-tooltip activator="parent" location="top">
+                    Download
+                  </v-tooltip>
+                </button>
+
+                <button
+                  :disabled="
+                    inventory.downloadingFileId === item.b2_file_id ||
+                    inventory.deletingFileId === item.id
+                  "
+                  @click.stop="handleDeleteClick(item)"
+                  class="action-btn"
+                >
+                  <v-progress-circular
+                    v-if="inventory.deletingFileId === item.id"
+                    indeterminate
+                    size="20"
+                    width="2"
+                    color="error"
+                  />
+                  <v-icon v-else icon="mdi-delete" color="error" />
+                  <v-tooltip activator="parent" location="top">
+                    Delete
+                  </v-tooltip>
                 </button>
               </template>
             </div>
@@ -213,18 +241,31 @@
         Load More Files
       </v-btn>
     </div>
+
+    <ConfirmDialog
+      ref="confirmDialog"
+      title="Delete File"
+      :message="dialogMessage"
+      confirm-text="Delete File"
+      color="error"
+      icon="mdi-delete-alert-outline"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { ref, onMounted } from "vue";
 import { useInventoryStore, type VirtualItem } from "@/stores/inventory";
 import { useJobsStore, type Job } from "@/stores/jobs";
 import { formatBytes, formatDate } from "@/utils/formatters";
 import { getFileIcon } from "@/utils/fileIcons";
+import ConfirmDialog from "../components/ConfirmDialog.vue";
 
 const inventory = useInventoryStore();
 const jobsStore = useJobsStore();
+
+const confirmDialog = ref<InstanceType<typeof ConfirmDialog> | null>(null);
+const dialogMessage = ref("");
 
 const handleItemClick = (item: any) => {
   if (item.type === "folder") {
@@ -260,6 +301,17 @@ const handleDownloadClick = (item: VirtualItem) => {
   } else if (folderStatus === "COMPLETED") {
     jobsStore.fetchCompletedZipLink(fullFolderPath);
   }
+};
+
+const handleDeleteClick = async (item: VirtualItem) => {
+  if (item.type !== "file") return;
+
+  dialogMessage.value = `Are you sure you want to permanently delete "${item.file_name}"? This action cannot be undone.`;
+
+  const confirmed = await confirmDialog.value?.open();
+  if (!confirmed) return;
+
+  await inventory.deleteFile(item.id);
 };
 
 const getJob = (fileName: string): Job | undefined => {
@@ -329,5 +381,10 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 </style>
