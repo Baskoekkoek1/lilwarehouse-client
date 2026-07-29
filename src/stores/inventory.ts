@@ -32,6 +32,7 @@ export const useInventoryStore = defineStore("inventory", () => {
   const error = ref<string | null>(null);
   const downloadingFileId = ref<string | null>(null);
   const deletingFileId = ref<string | number | null>(null);
+  const deletingFolderName = ref<string | null>(null);
 
   const currentOffset = ref(0);
   const LIMIT = 50;
@@ -201,6 +202,44 @@ export const useInventoryStore = defineStore("inventory", () => {
     }
   };
 
+  const deleteFolder = async (folderName: string): Promise<boolean> => {
+    deletingFolderName.value = folderName;
+    error.value = null;
+
+    try {
+      const encodedFolder = encodeURIComponent(folderName);
+      const response = await apiClient.delete(`/folders/${encodedFolder}`);
+
+      if (response.status === 200) {
+        const cleanFolder = folderName.replace(/\/+$/, "");
+
+        folders.value = folders.value.filter((f) => {
+          const cleanF = f.replace(/\/+$/, "");
+          return (
+            cleanF !== cleanFolder && !cleanF.startsWith(`${cleanFolder}/`)
+          );
+        });
+
+        items.value = items.value.filter((item) => {
+          const cleanItemFolder = item.folder_name.replace(/\/+$/, "");
+          return (
+            cleanItemFolder !== cleanFolder &&
+            !cleanItemFolder.startsWith(`${cleanFolder}/`)
+          );
+        });
+
+        return true;
+      }
+      return false;
+    } catch (err: any) {
+      console.error("Folder deletion error:", err);
+      error.value = err.response?.data?.message || "Failed to delete folder.";
+      return false;
+    } finally {
+      deletingFolderName.value = null;
+    }
+  };
+
   const setInventory = (newItems: InventoryItem[]) => {
     items.value = newItems;
   };
@@ -241,6 +280,7 @@ export const useInventoryStore = defineStore("inventory", () => {
     currentDirectoryContent,
     downloadingFileId,
     deletingFileId,
+    deletingFolderName,
     setInventory,
     fetchFoldersDirectory,
     fetchCurrentDirectory,
@@ -250,5 +290,6 @@ export const useInventoryStore = defineStore("inventory", () => {
     navigateTo,
     downloadFile,
     deleteFile,
+    deleteFolder,
   };
 });

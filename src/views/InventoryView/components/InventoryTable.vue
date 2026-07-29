@@ -51,6 +51,7 @@
               class="d-flex align-center justify-end w-100 pe-2 ga-2"
               style="min-height: 36px"
             >
+              <!-- ACTIONS -->
               <template v-if="item.type === 'folder'">
                 <!-- PENDING / QUEUED STATE -->
                 <template
@@ -178,6 +179,25 @@
                     color="primary"
                   />
                 </button>
+
+                <!-- DELETE FOLDER BUTTON -->
+                <button
+                  :disabled="inventory.deletingFolderName === item.file_name"
+                  @click.stop="handleDeleteFolderClick(item)"
+                  class="action-btn"
+                >
+                  <v-progress-circular
+                    v-if="inventory.deletingFolderName === item.file_name"
+                    indeterminate
+                    size="20"
+                    width="2"
+                    color="error"
+                  />
+                  <v-icon v-else icon="mdi-delete" color="error" />
+                  <v-tooltip activator="parent" location="top">
+                    Delete Folder
+                  </v-tooltip>
+                </button>
               </template>
 
               <!-- FILE ACTIONS (DOWNLOAD & DELETE) -->
@@ -244,9 +264,9 @@
 
     <ConfirmDialog
       ref="confirmDialog"
-      title="Delete File"
+      :title="dialogTitle"
       :message="dialogMessage"
-      confirm-text="Delete File"
+      confirm-text="Delete"
       color="error"
       icon="mdi-delete-alert-outline"
     />
@@ -265,6 +285,7 @@ const inventory = useInventoryStore();
 const jobsStore = useJobsStore();
 
 const confirmDialog = ref<InstanceType<typeof ConfirmDialog> | null>(null);
+const dialogTitle = ref("Delete Item");
 const dialogMessage = ref("");
 
 const handleItemClick = (item: any) => {
@@ -306,12 +327,30 @@ const handleDownloadClick = (item: VirtualItem) => {
 const handleDeleteClick = async (item: VirtualItem) => {
   if (item.type !== "file") return;
 
+  dialogTitle.value = "Delete File";
   dialogMessage.value = `Are you sure you want to permanently delete "${item.file_name}"? This action cannot be undone.`;
 
   const confirmed = await confirmDialog.value?.open();
   if (!confirmed) return;
 
   await inventory.deleteFile(item.id);
+};
+
+const handleDeleteFolderClick = async (item: VirtualItem) => {
+  if (item.type !== "folder") return;
+
+  const basePath = inventory.currentPath === "/" ? "" : inventory.currentPath;
+  const fullFolderPath = basePath
+    ? `${basePath}/${item.file_name}`
+    : `${item.file_name}`;
+
+  dialogTitle.value = "Delete Folder";
+  dialogMessage.value = `Are you sure you want to delete folder "${item.file_name}" and ALL files inside it? This action cannot be undone.`;
+
+  const confirmed = await confirmDialog.value?.open();
+  if (!confirmed) return;
+
+  await inventory.deleteFolder(fullFolderPath);
 };
 
 const getJob = (fileName: string): Job | undefined => {
