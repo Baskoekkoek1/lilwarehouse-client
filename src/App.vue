@@ -30,13 +30,16 @@ import LoginModal from "./components/auth/LoginModal/LoginModal.vue";
 // import CameraLoadingSpinner from './components/ui/CameraLoadingSpinner.vue';
 import { useUIStore } from "./stores/ui";
 import { useAuthStore } from "./stores/auth.ts";
+import { useUploadStore } from "./stores/uploads.ts";
 import { onMounted } from "vue";
 
 const uiStore = useUIStore();
 const authStore = useAuthStore();
+const uploadStore = useUploadStore();
 
 onMounted(async () => {
   const localToken = localStorage.getItem("lil_token");
+  await uploadStore.initQueue();
 
   if (localToken) {
     try {
@@ -49,9 +52,6 @@ onMounted(async () => {
 </script>
 
 <style>
-/* Pro-tip: Set global scrollbar styles or background logic here.
-   Avoid scoped styles for v-app since it's the root.
-*/
 html {
   overflow-y: auto !important; /* Prevents Vuetify layout jumps */
 }

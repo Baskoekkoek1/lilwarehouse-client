@@ -4,6 +4,7 @@ import axios from "axios";
 import * as UPLOAD from "@/types/uploads";
 import apiClient from "../api/client";
 import { useInventoryStore } from "./inventory";
+import { uploadDb, type UploadTaskRecord } from "@/db/uploadDb";
 
 // --- INTERNAL TYPES ---
 type UploadTask = UPLOAD.UploadTask;
@@ -24,41 +25,25 @@ export const useUploadStore = defineStore("upload", () => {
   >({});
   const recentLogs = ref<LogEntry[]>([]);
 
+  // Aggregate counters stored as direct reactive state
+  const totalCount = ref(0);
+  const processedCount = ref(0);
+  const errorCount = ref(0);
+  const activeProcessingCount = ref(0);
+
   // --- SETTINGS ---
   const CONCURRENCY_LIMIT = 3;
   const SIGNATURE_BATCH_SIZE = 50;
 
   // --- GETTERS ---
-  const totalCount = computed(() => Object.keys(uploadQueue.value).length);
-
-  const processedCount = computed(
-    () =>
-      Object.values(uploadQueue.value).filter((t) => t.status === "SUCCESS")
-        .length,
-  );
-
-  const errorCount = computed(
-    () =>
-      Object.values(uploadQueue.value).filter((t) => t.status === "ERROR")
-        .length,
-  );
-
-  const isProcessing = computed(() =>
-    Object.values(uploadQueue.value).some((t) =>
-      ["GETTING_URL", "UPLOADING", "FINALIZING"].includes(t.status),
-    ),
-  );
+  const isProcessing = computed(() => activeProcessingCount.value > 0);
 
   const overallProgress = computed(() => {
     if (totalCount.value === 0) return 0;
-    const totalProgress = Object.values(uploadQueue.value).reduce(
-      (acc, t) => acc + (t.progress || 0),
-      0,
-    );
-    return Math.round(totalProgress / totalCount.value);
+    return Math.round((processedCount.value / totalCount.value) * 100);
   });
 
-  // --- LOGGING HELPER ---
+  // --- UTILITIES & HELPERS ---
   const addLog = (message: string, type: LogEntry["type"] = "info") => {
     const time = new Date().toLocaleTimeString([], {
       hour12: false,
@@ -70,22 +55,80 @@ export const useUploadStore = defineStore("upload", () => {
     if (recentLogs.value.length > 100) recentLogs.value.pop();
   };
 
+  const syncCounts = async () => {
+    totalCount.value = await uploadDb.upload_tasks.count();
+    processedCount.value = await uploadDb.upload_tasks
+      .where("status")
+      .equals("SUCCESS")
+      .count();
+    errorCount.value = await uploadDb.upload_tasks
+      .where("status")
+      .equals("ERROR")
+      .count();
+    activeProcessingCount.value = await uploadDb.upload_tasks
+      .where("status")
+      .anyOf(["GETTING_URL", "UPLOADING", "FINALIZING"])
+      .count();
+  };
+
   // --- ACTIONS ---
-  const addUploadTasks = (payloadItems: UploadPayloadItem[]) => {
+  const initQueue = async () => {
+    // 1. Reset stranded tasks left in mid-flight states back to PENDING
+    const strandedCount = await uploadDb.upload_tasks
+      .where("status")
+      .anyOf(["GETTING_URL", "UPLOADING", "FINALIZING"])
+      .modify({ status: "PENDING", error: undefined });
+
+    if (strandedCount > 0) {
+      addLog(
+        `Reset ${strandedCount} interrupted tasks to pending state.`,
+        "info",
+      );
+    }
+
+    // 2. Sync Pinia store reactive counts with IndexedDB state
+    await syncCounts();
+
+    // 3. Count all pending tasks
+    const pendingCount = await uploadDb.upload_tasks
+      .where("status")
+      .equals("PENDING")
+      .count();
+
+    // 4. Trigger queue processor if pending tasks exist and loop isn't running
+    if (pendingCount > 0 && !isProcessing.value) {
+      addLog(`Resuming ${pendingCount} pending uploads from database.`, "info");
+      startMigration();
+    }
+  };
+
+  const addUploadTasks = async (payloadItems: UploadPayloadItem[]) => {
+    const now = Date.now();
+    const records: UploadTaskRecord[] = [];
+
     payloadItems.forEach((item) => {
       const name = item.file.name;
       if (name.startsWith(".") || name === "Thumbs.db") return;
 
-      const id = crypto.randomUUID();
-      uploadQueue.value[id] = {
-        id,
+      records.push({
+        id: crypto.randomUUID(),
         file: item.file,
         fileName: item.file.name,
         path: item.path,
+        fileSize: item.file.size,
+        mimeType: item.file.type || "application/octet-stream",
         status: "PENDING",
         progress: 0,
-      };
+        retryCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      });
     });
+
+    if (records.length > 0) {
+      await uploadDb.upload_tasks.bulkAdd(records);
+      await syncCounts();
+    }
 
     if (!isProcessing.value) startMigration();
   };
@@ -96,67 +139,137 @@ export const useUploadStore = defineStore("upload", () => {
       "info",
     );
 
+    // Reset any interrupted active tasks from prior crashes
+    await uploadDb.upload_tasks
+      .where("status")
+      .anyOf(["GETTING_URL", "UPLOADING", "FINALIZING"])
+      .modify({ status: "PENDING", updatedAt: Date.now() });
+
+    await syncCounts();
+
     const workers = Array.from({ length: CONCURRENCY_LIMIT }, () => worker());
 
     try {
       await Promise.all(workers);
       addLog("All pending tasks processed.", "success");
+
+      await uploadDb.upload_tasks.where("status").equals("SUCCESS").delete();
+      await syncCounts();
     } catch (err: unknown) {
       addLog("The worker pool encountered a critical error.", "error");
     }
   };
 
   const worker = async () => {
-    let task = Object.values(uploadQueue.value).find(
-      (queuedTask) => queuedTask.status === "PENDING",
-    );
+    const claimNextTask = async () => {
+      return await uploadDb.transaction(
+        "rw",
+        uploadDb.upload_tasks,
+        async () => {
+          const pending = await uploadDb.upload_tasks
+            .where("status")
+            .equals("PENDING")
+            .first();
 
-    while (task) {
+          if (!pending) return null;
+
+          await uploadDb.upload_tasks.update(pending.id, {
+            status: "GETTING_URL",
+            updatedAt: Date.now(),
+          });
+
+          return pending;
+        },
+      );
+    };
+
+    let taskRecord = await claimNextTask();
+
+    while (taskRecord) {
+      const task: UploadTask = {
+        id: taskRecord.id,
+        file: taskRecord.file,
+        fileName: taskRecord.fileName,
+        path: taskRecord.path,
+        status: "GETTING_URL",
+        progress: taskRecord.progress,
+        error: taskRecord.error,
+      };
+
       try {
-        // STEP 1: Get Signature (Batch optimized)
-        task.status = "GETTING_URL";
+        // STEP 1: Get Signature
+        await syncCounts();
+
         const creds = await getSignature(task);
 
-        // Guard against undefined creds to satisfy TS and runtime safety
         if (!creds || !creds.uploadUrl) {
           throw new Error("Failed to retrieve a valid upload signature.");
         }
 
         // STEP 2: Binary Pipe (S3 PUT)
         task.status = "UPLOADING";
-        await axios.put(creds.uploadUrl, task!.file, {
+        await uploadDb.upload_tasks.update(task.id, {
+          status: "UPLOADING",
+          updatedAt: Date.now(),
+        });
+        await syncCounts();
+
+        await axios.put(creds.uploadUrl, task.file, {
           headers: { "Content-Type": "application/octet-stream" },
           timeout: 0,
           onUploadProgress: (p) => {
-            task!.progress = Math.round((p.loaded / (p.total || 1)) * 100);
+            task.progress = Math.round((p.loaded / (p.total || 1)) * 100);
+            uploadDb.upload_tasks.update(task.id, {
+              progress: task.progress,
+              updatedAt: Date.now(),
+            });
           },
         });
 
         // STEP 3: Database Finalization
-        task!.status = "FINALIZING";
+        task.status = "FINALIZING";
+        await uploadDb.upload_tasks.update(task.id, {
+          status: "FINALIZING",
+          updatedAt: Date.now(),
+        });
+        await syncCounts();
+
         await apiClient.post("/uploads/complete", {
-          fileName: task!.fileName,
-          folderPath: task!.path || "root",
+          fileName: task.fileName,
+          folderPath: task.path || "root",
           storageKey: creds.storageKey,
-          mimeType: task!.file.type,
-          fileSize: task!.file.size,
+          mimeType: task.file.type,
+          fileSize: task.file.size,
         });
 
-        task!.status = "SUCCESS";
-        addLog(`Finished: ${task!.fileName}`, "success");
+        task.status = "SUCCESS";
+        await uploadDb.upload_tasks.update(task.id, {
+          status: "SUCCESS",
+          progress: 100,
+          updatedAt: Date.now(),
+        });
+        await syncCounts();
+
+        addLog(`Finished: ${task.fileName}`, "success");
         const inventoryStore = useInventoryStore();
         inventoryStore.clearFilesStream();
       } catch (err: unknown) {
-        task!.status = "ERROR";
+        task.status = "ERROR";
         const errorMsg =
           err instanceof Error ? err.message : "Unknown upload error";
-        task!.error = errorMsg;
-        addLog(`Error [${task!.fileName}]: ${errorMsg}`, "error");
+        task.error = errorMsg;
+
+        await uploadDb.upload_tasks.update(task.id, {
+          status: "ERROR",
+          error: errorMsg,
+          updatedAt: Date.now(),
+        });
+        await syncCounts();
+
+        addLog(`Error [${task.fileName}]: ${errorMsg}`, "error");
       }
 
-      task = Object.values(uploadQueue.value).find(
-        (t) => t.status === "PENDING",
-      );
+      taskRecord = await claimNextTask();
     }
   };
 
@@ -169,9 +282,11 @@ export const useUploadStore = defineStore("upload", () => {
       return cached;
     }
 
-    const pendingTasks = Object.values(uploadQueue.value)
-      .filter((t) => t.status === "PENDING" || t.id === task.id)
-      .slice(0, SIGNATURE_BATCH_SIZE);
+    const pendingTasks = await uploadDb.upload_tasks
+      .where("status")
+      .anyOf(["PENDING", "GETTING_URL"])
+      .limit(SIGNATURE_BATCH_SIZE)
+      .toArray();
 
     try {
       const { data } = await apiClient.post("/uploads/presigned", {
@@ -204,19 +319,15 @@ export const useUploadStore = defineStore("upload", () => {
     }
   };
 
-  const retryFailedTasks = () => {
+  const retryFailedTasks = async () => {
     addLog("Gathering failed tasks for retry...", "info");
 
-    let retriedCount = 0;
+    const retriedCount = await uploadDb.upload_tasks
+      .where("status")
+      .equals("ERROR")
+      .modify({ status: "PENDING", progress: 0, error: undefined });
 
-    Object.values(uploadQueue.value).forEach((task) => {
-      if (task.status === "ERROR") {
-        task.status = "PENDING";
-        task.progress = 0;
-        task.error = undefined;
-        retriedCount++;
-      }
-    });
+    await syncCounts();
 
     if (retriedCount > 0) {
       addLog(`Re-queueing ${retriedCount} failed tasks.`, "info");
@@ -228,10 +339,12 @@ export const useUploadStore = defineStore("upload", () => {
     }
   };
 
-  const clearUploadQueue = () => {
+  const clearUploadQueue = async () => {
     uploadQueue.value = {};
     recentLogs.value = [];
     signatureCache.value = {};
+    await uploadDb.upload_tasks.clear();
+    await syncCounts();
   };
 
   return {
@@ -240,8 +353,10 @@ export const useUploadStore = defineStore("upload", () => {
     totalCount,
     processedCount,
     errorCount,
-    overallProgress,
+    activeProcessingCount,
     isProcessing,
+    overallProgress,
+    initQueue,
     addUploadTasks,
     retryFailedTasks,
     clearUploadQueue,

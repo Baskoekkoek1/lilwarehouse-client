@@ -1,15 +1,17 @@
+export type UploadStatus =
+  | "PENDING"
+  | "GETTING_URL"
+  | "UPLOADING"
+  | "FINALIZING"
+  | "SUCCESS"
+  | "ERROR";
+
 export interface UploadTask {
   id: string;
   file: File;
   fileName: string;
   path: string;
-  status:
-    | "PENDING"
-    | "GETTING_URL"
-    | "UPLOADING"
-    | "FINALIZING"
-    | "SUCCESS"
-    | "ERROR";
+  status: UploadStatus;
   progress: number;
   error?: string;
 }
