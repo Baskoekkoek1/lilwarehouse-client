@@ -17,6 +17,15 @@ export interface LogEntry {
   type: "info" | "success" | "error";
 }
 
+interface CompletionBufferItem {
+  taskId: string;
+  fileName: string;
+  folderPath: string;
+  storageKey: string;
+  mimeType: string;
+  fileSize: number;
+}
+
 export const useUploadStore = defineStore("upload", () => {
   // --- STATE ---
   const uploadQueue = ref<Record<string, UploadTask>>({});
@@ -24,6 +33,10 @@ export const useUploadStore = defineStore("upload", () => {
     Record<string, { uploadUrl: string; storageKey: string }>
   >({});
   const recentLogs = ref<LogEntry[]>([]);
+
+  // Batching completion queue buffer
+  const completionBuffer = ref<CompletionBufferItem[]>([]);
+  let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Aggregate counters stored as direct reactive state
   const totalCount = ref(0);
@@ -34,6 +47,8 @@ export const useUploadStore = defineStore("upload", () => {
   // --- SETTINGS ---
   const CONCURRENCY_LIMIT = 3;
   const SIGNATURE_BATCH_SIZE = 50;
+  const COMPLETION_BATCH_MAX_SIZE = 100;
+  const COMPLETION_FLUSH_INTERVAL_MS = 3000;
 
   // --- GETTERS ---
   const isProcessing = computed(() => activeProcessingCount.value > 0);
@@ -71,9 +86,84 @@ export const useUploadStore = defineStore("upload", () => {
       .count();
   };
 
+  // --- BATCH COMPLETION LOGIC ---
+  const flushCompletionBuffer = async () => {
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+
+    if (completionBuffer.value.length === 0) return;
+
+    const batchToFlush = [...completionBuffer.value];
+    completionBuffer.value = [];
+
+    try {
+      addLog(
+        `Flushing ${batchToFlush.length} upload completions to server...`,
+        "info",
+      );
+
+      await apiClient.post("/uploads/complete", {
+        files: batchToFlush.map((item) => ({
+          fileName: item.fileName,
+          folderPath: item.folderPath,
+          storageKey: item.storageKey,
+          mimeType: item.mimeType,
+          fileSize: item.fileSize,
+        })),
+      });
+
+      const taskIds = batchToFlush.map((i) => i.taskId);
+      await uploadDb.upload_tasks
+        .where("id")
+        .anyOf(taskIds)
+        .modify({ status: "SUCCESS", progress: 100, updatedAt: Date.now() });
+
+      await syncCounts();
+      addLog(
+        `Batch completion finalized ${batchToFlush.length} files.`,
+        "success",
+      );
+
+      const inventoryStore = useInventoryStore();
+      inventoryStore.clearFilesStream();
+    } catch (err: unknown) {
+      const errorMsg =
+        err instanceof Error ? err.message : "Batch completion request failed";
+
+      addLog(`Batch completion failed: ${errorMsg}`, "error");
+
+      const taskIds = batchToFlush.map((i) => i.taskId);
+      await uploadDb.upload_tasks
+        .where("id")
+        .anyOf(taskIds)
+        .modify({
+          status: "ERROR",
+          error: `Batch failed during server completion: ${errorMsg}`,
+          updatedAt: Date.now(),
+        });
+
+      await syncCounts();
+    }
+  };
+
+  const queueCompletionTask = async (task: CompletionBufferItem) => {
+    completionBuffer.value.push(task);
+
+    if (completionBuffer.value.length >= COMPLETION_BATCH_MAX_SIZE) {
+      await flushCompletionBuffer();
+      return;
+    }
+
+    if (flushTimer) clearTimeout(flushTimer);
+    flushTimer = setTimeout(() => {
+      flushCompletionBuffer();
+    }, COMPLETION_FLUSH_INTERVAL_MS);
+  };
+
   // --- ACTIONS ---
   const initQueue = async () => {
-    // 1. Reset stranded tasks left in mid-flight states back to PENDING
     const strandedCount = await uploadDb.upload_tasks
       .where("status")
       .anyOf(["GETTING_URL", "UPLOADING", "FINALIZING"])
@@ -86,16 +176,13 @@ export const useUploadStore = defineStore("upload", () => {
       );
     }
 
-    // 2. Sync Pinia store reactive counts with IndexedDB state
     await syncCounts();
 
-    // 3. Count all pending tasks
     const pendingCount = await uploadDb.upload_tasks
       .where("status")
       .equals("PENDING")
       .count();
 
-    // 4. Trigger queue processor if pending tasks exist and loop isn't running
     if (pendingCount > 0 && !isProcessing.value) {
       addLog(`Resuming ${pendingCount} pending uploads from database.`, "info");
       startMigration();
@@ -139,7 +226,6 @@ export const useUploadStore = defineStore("upload", () => {
       "info",
     );
 
-    // Reset any interrupted active tasks from prior crashes
     await uploadDb.upload_tasks
       .where("status")
       .anyOf(["GETTING_URL", "UPLOADING", "FINALIZING"])
@@ -151,6 +237,7 @@ export const useUploadStore = defineStore("upload", () => {
 
     try {
       await Promise.all(workers);
+      await flushCompletionBuffer();
       addLog("All pending tasks processed.", "success");
 
       await uploadDb.upload_tasks.where("status").equals("SUCCESS").delete();
@@ -197,7 +284,6 @@ export const useUploadStore = defineStore("upload", () => {
       };
 
       try {
-        // STEP 1: Get Signature
         await syncCounts();
 
         const creds = await getSignature(task);
@@ -206,7 +292,6 @@ export const useUploadStore = defineStore("upload", () => {
           throw new Error("Failed to retrieve a valid upload signature.");
         }
 
-        // STEP 2: Binary Pipe (S3 PUT)
         task.status = "UPLOADING";
         await uploadDb.upload_tasks.update(task.id, {
           status: "UPLOADING",
@@ -226,7 +311,6 @@ export const useUploadStore = defineStore("upload", () => {
           },
         });
 
-        // STEP 3: Database Finalization
         task.status = "FINALIZING";
         await uploadDb.upload_tasks.update(task.id, {
           status: "FINALIZING",
@@ -234,25 +318,16 @@ export const useUploadStore = defineStore("upload", () => {
         });
         await syncCounts();
 
-        await apiClient.post("/uploads/complete", {
+        await queueCompletionTask({
+          taskId: task.id,
           fileName: task.fileName,
           folderPath: task.path || "root",
           storageKey: creds.storageKey,
-          mimeType: task.file.type,
+          mimeType: task.file.type || "application/octet-stream",
           fileSize: task.file.size,
         });
 
-        task.status = "SUCCESS";
-        await uploadDb.upload_tasks.update(task.id, {
-          status: "SUCCESS",
-          progress: 100,
-          updatedAt: Date.now(),
-        });
-        await syncCounts();
-
-        addLog(`Finished: ${task.fileName}`, "success");
-        const inventoryStore = useInventoryStore();
-        inventoryStore.clearFilesStream();
+        addLog(`Uploaded & buffered: ${task.fileName}`, "info");
       } catch (err: unknown) {
         task.status = "ERROR";
         const errorMsg =
@@ -343,6 +418,11 @@ export const useUploadStore = defineStore("upload", () => {
     uploadQueue.value = {};
     recentLogs.value = [];
     signatureCache.value = {};
+    completionBuffer.value = [];
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
     await uploadDb.upload_tasks.clear();
     await syncCounts();
   };
