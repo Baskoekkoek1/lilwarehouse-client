@@ -104,7 +104,7 @@ export const useUploadStore = defineStore("upload", () => {
         "info",
       );
 
-      await apiClient.post("/uploads/complete", {
+      await apiClient.post("/uploads/complete-batch", {
         files: batchToFlush.map((item) => ({
           fileName: item.fileName,
           folderPath: item.folderPath,
@@ -128,6 +128,8 @@ export const useUploadStore = defineStore("upload", () => {
 
       const inventoryStore = useInventoryStore();
       inventoryStore.clearFilesStream();
+      await inventoryStore.fetchFoldersDirectory();
+      await inventoryStore.fetchCurrentDirectory();
     } catch (err: unknown) {
       const errorMsg =
         err instanceof Error ? err.message : "Batch completion request failed";

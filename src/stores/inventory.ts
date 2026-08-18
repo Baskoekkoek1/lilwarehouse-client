@@ -46,10 +46,14 @@ export const useInventoryStore = defineStore("inventory", () => {
         : currentPath.value.replace(/^\/|\/$/g, "");
 
     const targetDbFolder =
-      currentPath.value === "/" ? "root" : `${currentPathClean}/`;
+      currentPath.value === "/" ? "root" : currentPathClean;
 
     const filesList: VirtualItem[] = items.value
-      .filter((item) => item.folder_name === targetDbFolder)
+      .filter((item) => {
+        const cleanItemFolder =
+          item.folder_name?.replace(/^\/|\/$/g, "") || "root";
+        return cleanItemFolder === targetDbFolder;
+      })
       .map((item) => ({
         id: item.id,
         file_name: item.file_name,
@@ -116,12 +120,10 @@ export const useInventoryStore = defineStore("inventory", () => {
 
     try {
       let endpoint = "/inventory";
-
       const cleanFolderName = currentPath.value.replace(/^\/|\/$/g, "");
 
       if (cleanFolderName !== "" && currentPath.value !== "/") {
-        const dbTargetFolder = `${cleanFolderName}/`;
-        endpoint = `/folders/${encodeURIComponent(dbTargetFolder)}`;
+        endpoint = `/folders/${encodeURIComponent(cleanFolderName)}`;
       }
 
       const response = await apiClient.get(endpoint, {
@@ -207,27 +209,27 @@ export const useInventoryStore = defineStore("inventory", () => {
     error.value = null;
 
     try {
-      const encodedFolder = encodeURIComponent(folderName);
+      const cleanFolder = folderName.replace(/^\/|\/$/g, "");
+      const encodedFolder = encodeURIComponent(cleanFolder);
       const response = await apiClient.delete(`/folders/${encodedFolder}`);
 
       if (response.status === 200) {
-        const cleanFolder = folderName.replace(/\/+$/, "");
-
         folders.value = folders.value.filter((f) => {
-          const cleanF = f.replace(/\/+$/, "");
+          const cleanF = f.replace(/^\/|\/$/g, "");
           return (
             cleanF !== cleanFolder && !cleanF.startsWith(`${cleanFolder}/`)
           );
         });
 
         items.value = items.value.filter((item) => {
-          const cleanItemFolder = item.folder_name.replace(/\/+$/, "");
+          const cleanItemFolder = item.folder_name.replace(/^\/|\/$/g, "");
           return (
             cleanItemFolder !== cleanFolder &&
             !cleanItemFolder.startsWith(`${cleanFolder}/`)
           );
         });
 
+        await fetchFoldersDirectory();
         return true;
       }
       return false;
