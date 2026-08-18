@@ -4,12 +4,30 @@ import { useInventoryStore } from "./inventory";
 import { useJobsStore } from "./jobs";
 import { useUIStore } from "./ui";
 import apiClient from "../api/client";
+import axios from "axios";
 
 interface User {
   id: string;
   username: string;
   scopes: string[];
 }
+
+const isTokenExpiringSoon = (
+  jwtToken: string | null,
+  bufferSeconds = 120,
+): boolean => {
+  if (!jwtToken) return true;
+  try {
+    const payloadBase64 = jwtToken.split(".")[1];
+    if (!payloadBase64) return true;
+    const decoded = JSON.parse(atob(payloadBase64));
+    if (!decoded.exp) return false;
+    const expiresAtMs = decoded.exp * 1000;
+    return expiresAtMs - Date.now() < bufferSeconds * 1000;
+  } catch {
+    return true;
+  }
+};
 
 export const useAuthStore = defineStore("auth", () => {
   // State
@@ -79,6 +97,32 @@ export const useAuthStore = defineStore("auth", () => {
     jobs.reset();
   };
 
+  const refreshToken = async (): Promise<string | null> => {
+    try {
+      const { data } = await axios.post(
+        `${import.meta.env.VITE_API_URL || "http://localhost:3000"}/auth/refresh`,
+        {},
+        { withCredentials: true },
+      );
+      if (data?.token) {
+        setToken(data.token);
+        return data.token;
+      }
+      return null;
+    } catch (err) {
+      logout();
+      const uiStore = useUIStore();
+      uiStore.isLoginModalOpen = true;
+      return null;
+    }
+  };
+
+  const checkAndRefreshTokenIfNeeded = async (): Promise<void> => {
+    if (isTokenExpiringSoon(token.value)) {
+      await refreshToken();
+    }
+  };
+
   return {
     token,
     user,
@@ -89,5 +133,7 @@ export const useAuthStore = defineStore("auth", () => {
     logout,
     setToken,
     fetchUserProfile,
+    refreshToken,
+    checkAndRefreshTokenIfNeeded,
   };
 });

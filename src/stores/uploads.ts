@@ -4,6 +4,7 @@ import axios from "axios";
 import * as UPLOAD from "@/types/uploads";
 import apiClient from "../api/client";
 import { useInventoryStore } from "./inventory";
+import { useAuthStore } from "./auth";
 import { uploadDb, type UploadTaskRecord } from "@/db/uploadDb";
 
 // --- INTERNAL TYPES ---
@@ -25,6 +26,8 @@ interface CompletionBufferItem {
   mimeType: string;
   fileSize: number;
 }
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export const useUploadStore = defineStore("upload", () => {
   // --- STATE ---
@@ -301,17 +304,47 @@ export const useUploadStore = defineStore("upload", () => {
         });
         await syncCounts();
 
-        await axios.put(creds.uploadUrl, task.file, {
-          headers: { "Content-Type": "application/octet-stream" },
-          timeout: 0,
-          onUploadProgress: (p) => {
-            task.progress = Math.round((p.loaded / (p.total || 1)) * 100);
-            uploadDb.upload_tasks.update(task.id, {
-              progress: task.progress,
-              updatedAt: Date.now(),
+        // Exponential backoff retry loop for direct binary upload
+        const MAX_RETRIES = 5;
+        let attempt = 0;
+        let uploadSuccess = false;
+        let lastError: unknown = null;
+
+        while (attempt < MAX_RETRIES && !uploadSuccess) {
+          try {
+            await axios.put(creds.uploadUrl, task.file, {
+              headers: { "Content-Type": "application/octet-stream" },
+              timeout: 0,
+              onUploadProgress: (p) => {
+                task.progress = Math.round((p.loaded / (p.total || 1)) * 100);
+                uploadDb.upload_tasks.update(task.id, {
+                  progress: task.progress,
+                  updatedAt: Date.now(),
+                });
+              },
             });
-          },
-        });
+            uploadSuccess = true;
+          } catch (err) {
+            console.log("errorrrr", err);
+            attempt++;
+            lastError = err;
+            if (attempt < MAX_RETRIES) {
+              const delay = Math.pow(2, attempt) * 1000;
+              addLog(
+                `Network glitch on ${task.fileName}. Retry ${attempt}/${MAX_RETRIES} in ${delay / 1000}s...`,
+                "info",
+              );
+              await sleep(delay);
+            }
+          }
+        }
+
+        if (!uploadSuccess) {
+          throw (
+            lastError ||
+            new Error("Direct upload failed after maximum retries.")
+          );
+        }
 
         task.status = "FINALIZING";
         await uploadDb.upload_tasks.update(task.id, {
@@ -358,6 +391,10 @@ export const useUploadStore = defineStore("upload", () => {
       delete signatureCache.value[task.id];
       return cached;
     }
+
+    // Proactively refresh JWT before presigned batch fetch if expiring within 2 min
+    const authStore = useAuthStore();
+    await authStore.checkAndRefreshTokenIfNeeded();
 
     const pendingTasks = await uploadDb.upload_tasks
       .where("status")

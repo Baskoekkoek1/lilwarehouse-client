@@ -34,6 +34,7 @@ apiClient.interceptors.response.use(
       if (isRefreshing) {
         return new Promise((resolve) => {
           refreshSubscribers.push((token: string) => {
+            if (!originalRequest.headers) originalRequest.headers = {};
             originalRequest.headers.Authorization = `Bearer ${token}`;
             resolve(apiClient(originalRequest));
           });
@@ -48,7 +49,7 @@ apiClient.interceptors.response.use(
 
         // Issue background token refresh request
         const { data } = await axios.post(
-          `${import.meta.env.VITE_API_URL}/auth/refresh`,
+          `${import.meta.env.VITE_API_URL || "http://localhost:3000"}/auth/refresh`,
           {},
           { withCredentials: true },
         );
@@ -59,9 +60,13 @@ apiClient.interceptors.response.use(
         isRefreshing = false;
         onRefreshed(newToken);
 
+        if (!originalRequest.headers) originalRequest.headers = {};
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+
         return apiClient(originalRequest);
       } catch (refreshServerError) {
         isRefreshing = false;
+        refreshSubscribers = [];
 
         const authStore = useAuthStore();
         authStore.logout();
