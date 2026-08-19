@@ -2,16 +2,26 @@
   <div class="dropzone-container">
     <div
       class="dropzone"
-      :class="{ 'is-dragging': isDragging }"
-      @dragover.prevent="isDragging = true"
+      :class="{
+        'is-dragging': isDragging && !isProcessing,
+        'is-disabled': isProcessing,
+      }"
+      @dragover.prevent="handleDragOver"
       @dragleave="isDragging = false"
       @drop.prevent="handleDrop"
       @click="triggerFileInput"
-      tabindex="0"
+      :tabindex="isProcessing ? -1 : 0"
     >
       <div class="dropzone-header">
-        <v-icon size="64" color="primary">mdi-cloud-upload-outline</v-icon>
-        <p>Drag & Drop files or folders here or click to browse</p>
+        <v-progress-circular
+          v-if="isProcessing"
+          indeterminate
+          color="primary"
+        />
+        <template v-else>
+          <v-icon size="64" color="primary">mdi-cloud-upload-outline</v-icon>
+          <p>Drag & Drop files or folders here or click to browse</p>
+        </template>
       </div>
     </div>
 
@@ -19,6 +29,7 @@
       ref="fileInput"
       type="file"
       multiple
+      :disabled="isProcessing"
       @change="handleFileSelect"
       class="hidden-input"
     />
@@ -28,6 +39,10 @@
 <script setup lang="ts">
 import { ref } from "vue";
 
+const props = defineProps<{
+  isProcessing: boolean;
+}>();
+
 const isDragging = ref<boolean>(false);
 const fileInput = ref<HTMLInputElement | null>(null);
 
@@ -35,8 +50,15 @@ const emit = defineEmits<{
   (e: "files-selected", payload: { file: File; path: string }[]): void;
 }>();
 
+const handleDragOver = () => {
+  if (props.isProcessing) return;
+  isDragging.value = true;
+};
+
 const handleDrop = async (e: DragEvent) => {
   isDragging.value = false;
+  if (props.isProcessing) return;
+
   const items = e.dataTransfer?.items;
   if (!items) return;
 
@@ -72,6 +94,8 @@ const handleDrop = async (e: DragEvent) => {
 };
 
 const handleFileSelect = (e: Event) => {
+  if (props.isProcessing) return;
+
   const target = e.target as HTMLInputElement;
   if (target.files) {
     const filesArray = Array.from(target.files).map((file) => ({
@@ -83,7 +107,10 @@ const handleFileSelect = (e: Event) => {
   target.value = "";
 };
 
-const triggerFileInput = () => fileInput.value?.click();
+const triggerFileInput = () => {
+  if (props.isProcessing) return;
+  fileInput.value?.click();
+};
 </script>
 
 <style scoped>
@@ -120,6 +147,12 @@ const triggerFileInput = () => fileInput.value?.click();
 .is-dragging {
   border-color: rgb(var(--v-theme-primary));
   background: rgba(var(--v-theme-primary), 0.1);
+}
+
+.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  border-color: #333;
 }
 
 .hidden-input {

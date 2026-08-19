@@ -10,7 +10,10 @@
 
     <v-row>
       <v-col cols="12" lg="8">
-        <UploadZone @files-selected="handleFilesSelected" />
+        <UploadZone
+          @files-selected="handleFilesSelected"
+          :is-processing="uploadStore.isProcessing"
+        />
       </v-col>
 
       <v-col cols="12" lg="4">
