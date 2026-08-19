@@ -98,8 +98,8 @@
 
   <UploadSuccessModal
     v-model="showSuccessModal"
-    :number-of-files="uploadStore.processedCount"
-    :error-count="uploadStore.errorCount"
+    :number-of-files="completedProcessedCount"
+    :error-count="completedErrorCount"
     @goToInventory="handleGoToInventory"
     @closeModal="handleCloseModal"
   />
@@ -127,6 +127,10 @@ const showWarningModal = ref<boolean>(false);
 const showSuccessModal = ref<boolean>(false);
 const numberOfFiles = ref<number>(0);
 const pendingFiles = ref<UploadFileItem[]>([]);
+
+// Snapshots to lock count values for the success modal
+const completedProcessedCount = ref<number>(0);
+const completedErrorCount = ref<number>(0);
 
 const handleFilesSelected = (payload: UploadFileItem[]) => {
   pendingFiles.value = payload;
@@ -164,6 +168,7 @@ const handleGoToInventory = () => {
 const handleCloseModal = () => {
   showSuccessModal.value = false;
 };
+
 watch(
   () => uploadStore.isProcessing,
   (processing) => {
@@ -176,6 +181,9 @@ watch(
         uploadStore.totalCount > 0 &&
         totalEvaluated === uploadStore.totalCount
       ) {
+        completedProcessedCount.value = uploadStore.processedCount;
+        completedErrorCount.value = uploadStore.errorCount;
+
         showSuccessModal.value = true;
       }
     }

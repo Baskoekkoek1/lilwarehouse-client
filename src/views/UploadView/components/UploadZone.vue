@@ -1,6 +1,5 @@
 <template>
   <div class="dropzone-container">
-    <!-- Removed the input from inside this div -->
     <div
       class="dropzone"
       :class="{ 'is-dragging': isDragging }"
@@ -16,7 +15,6 @@
       </div>
     </div>
 
-    <!-- Placed outside the dropzone to prevent click event bubbling loops -->
     <input
       ref="fileInput"
       type="file"
@@ -82,7 +80,7 @@ const handleFileSelect = (e: Event) => {
     }));
     emit("files-selected", filesArray);
   }
-  target.value = ""; // Resets the input selection perfectly
+  target.value = "";
 };
 
 const triggerFileInput = () => fileInput.value?.click();
@@ -91,7 +89,7 @@ const triggerFileInput = () => fileInput.value?.click();
 <style scoped>
 .dropzone-container {
   display: flex;
-  flex-direction: column; /* Changed to handle stacking sibling input cleanly */
+  flex-direction: column;
   justify-content: center;
   align-items: center;
   min-height: 150px;
