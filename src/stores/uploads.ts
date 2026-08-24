@@ -36,6 +36,7 @@ export const useUploadStore = defineStore("upload", () => {
     Record<string, { uploadUrl: string; storageKey: string }>
   >({});
   const recentLogs = ref<LogEntry[]>([]);
+  const isQueuing = ref(false);
 
   // Batching completion queue buffer
   const completionBuffer = ref<CompletionBufferItem[]>([]);
@@ -54,7 +55,9 @@ export const useUploadStore = defineStore("upload", () => {
   const COMPLETION_FLUSH_INTERVAL_MS = 3000;
 
   // --- GETTERS ---
-  const isProcessing = computed(() => activeProcessingCount.value > 0);
+  const isProcessing = computed(
+    () => isQueuing.value || activeProcessingCount.value > 0,
+  );
 
   const overallProgress = computed(() => {
     if (totalCount.value === 0) return 0;
@@ -195,34 +198,44 @@ export const useUploadStore = defineStore("upload", () => {
   };
 
   const addUploadTasks = async (payloadItems: UploadPayloadItem[]) => {
-    const now = Date.now();
-    const records: UploadTaskRecord[] = [];
+    isQueuing.value = true;
+    try {
+      const now = Date.now();
+      const records: UploadTaskRecord[] = [];
 
-    payloadItems.forEach((item) => {
-      const name = item.file.name;
-      if (name.startsWith(".") || name === "Thumbs.db") return;
+      payloadItems.forEach((item) => {
+        const name = item.file.name;
+        if (name.startsWith(".") || name === "Thumbs.db") return;
 
-      records.push({
-        id: crypto.randomUUID(),
-        file: item.file,
-        fileName: item.file.name,
-        path: item.path,
-        fileSize: item.file.size,
-        mimeType: item.file.type || "application/octet-stream",
-        status: "PENDING",
-        progress: 0,
-        retryCount: 0,
-        createdAt: now,
-        updatedAt: now,
+        records.push({
+          id: crypto.randomUUID(),
+          file: item.file,
+          fileName: item.file.name,
+          path: item.path,
+          fileSize: item.file.size,
+          mimeType: item.file.type || "application/octet-stream",
+          status: "PENDING",
+          progress: 0,
+          retryCount: 0,
+          createdAt: now,
+          updatedAt: now,
+        });
       });
-    });
 
-    if (records.length > 0) {
-      await uploadDb.upload_tasks.bulkAdd(records);
-      await syncCounts();
+      if (records.length > 0) {
+        await uploadDb.upload_tasks.bulkAdd(records);
+        await syncCounts();
+      }
+
+      if (activeProcessingCount.value === 0) {
+        startMigration();
+      } else {
+        isQueuing.value = false;
+      }
+    } catch (err) {
+      isQueuing.value = false;
+      throw err;
     }
-
-    if (!isProcessing.value) startMigration();
   };
 
   const startMigration = async () => {
@@ -239,6 +252,8 @@ export const useUploadStore = defineStore("upload", () => {
     await syncCounts();
 
     const workers = Array.from({ length: CONCURRENCY_LIMIT }, () => worker());
+
+    isQueuing.value = false;
 
     try {
       await Promise.all(workers);
