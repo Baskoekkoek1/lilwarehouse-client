@@ -1,6 +1,10 @@
 <template>
   <h2>Welcome to LilWarehouse!</h2>
-  <h3>{{ `Welcome ${userName}!` }}</h3>
+  <h3>
+    {{
+      `Welcome ${userName}, but take head of what awaits the sin of greed...`
+    }}
+  </h3>
 </template>
 
 <script setup lang="ts">
