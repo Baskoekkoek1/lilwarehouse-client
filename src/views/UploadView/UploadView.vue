@@ -45,17 +45,30 @@
               <div
                 class="text-caption text-grey d-flex align-center justify-end gap-1"
               >
-                <v-btn
+                <template
                   v-if="uploadStore.errorCount > 0 && !uploadStore.isProcessing"
-                  size="x-small"
-                  color="error"
-                  variant="text"
-                  prepend-icon="mdi-refresh"
-                  class="mr-1 px-1"
-                  @click="uploadStore.retryFailedTasks()"
                 >
-                  Retry
-                </v-btn>
+                  <v-btn
+                    size="x-small"
+                    color="error"
+                    variant="text"
+                    prepend-icon="mdi-refresh"
+                    class="px-1"
+                    @click="uploadStore.retryFailedTasks()"
+                  >
+                    Retry
+                  </v-btn>
+                  <v-btn
+                    size="x-small"
+                    color="grey"
+                    variant="text"
+                    prepend-icon="mdi-delete-outline"
+                    class="mr-1 px-1"
+                    @click="uploadStore.clearFailedTasks()"
+                  >
+                    Clear
+                  </v-btn>
+                </template>
                 <span>Errors</span>
               </div>
               <div

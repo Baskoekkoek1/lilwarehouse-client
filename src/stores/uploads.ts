@@ -453,6 +453,23 @@ export const useUploadStore = defineStore("upload", () => {
     }
   };
 
+  const clearFailedTasks = async () => {
+    addLog("Clearing failed tasks...", "info");
+
+    const deletedCount = await uploadDb.upload_tasks
+      .where("status")
+      .equals("ERROR")
+      .delete();
+
+    await syncCounts();
+
+    if (deletedCount > 0) {
+      addLog(`Cleared ${deletedCount} failed tasks.`, "info");
+    } else {
+      addLog("No failed tasks found to clear.", "info");
+    }
+  };
+
   const clearUploadQueue = async () => {
     uploadQueue.value = {};
     recentLogs.value = [];
@@ -478,6 +495,7 @@ export const useUploadStore = defineStore("upload", () => {
     initQueue,
     addUploadTasks,
     retryFailedTasks,
+    clearFailedTasks,
     clearUploadQueue,
   };
 });
