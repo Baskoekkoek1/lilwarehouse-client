@@ -3,10 +3,18 @@ import { useAuthStore } from "../stores/auth";
 import { useUIStore } from "../stores/ui";
 
 let isRefreshing = false;
-let refreshSubscribers: ((token: string) => void)[] = [];
+let refreshSubscribers: {
+  resolve: (token: string) => void;
+  reject: (err: unknown) => void;
+}[] = [];
 
 const onRefreshed = (token: string) => {
-  refreshSubscribers.map((callback) => callback(token));
+  refreshSubscribers.forEach((sub) => sub.resolve(token));
+  refreshSubscribers = [];
+};
+
+const onRefreshFailed = (err: unknown) => {
+  refreshSubscribers.forEach((sub) => sub.reject(err));
   refreshSubscribers = [];
 };
 
@@ -30,13 +38,20 @@ apiClient.interceptors.response.use(
     const originalRequest = config;
 
     // Handle Access Token Expiration
-    if (response?.status === 401 && !originalRequest._retry) {
+    if (
+      response?.status === 401 &&
+      originalRequest &&
+      !originalRequest._retry
+    ) {
       if (isRefreshing) {
-        return new Promise((resolve) => {
-          refreshSubscribers.push((token: string) => {
-            if (!originalRequest.headers) originalRequest.headers = {};
-            originalRequest.headers.Authorization = `Bearer ${token}`;
-            resolve(apiClient(originalRequest));
+        return new Promise((resolve, reject) => {
+          refreshSubscribers.push({
+            resolve: (token: string) => {
+              if (!originalRequest.headers) originalRequest.headers = {};
+              originalRequest.headers.Authorization = `Bearer ${token}`;
+              resolve(apiClient(originalRequest));
+            },
+            reject: (err) => reject(err),
           });
         });
       }
@@ -46,16 +61,11 @@ apiClient.interceptors.response.use(
 
       try {
         const authStore = useAuthStore();
+        const newToken = await authStore.refreshToken();
 
-        // Issue background token refresh request
-        const { data } = await axios.post(
-          `${import.meta.env.VITE_API_URL || "http://localhost:3000"}/auth/refresh`,
-          {},
-          { withCredentials: true },
-        );
-
-        const newToken = data.token;
-        authStore.setToken(newToken);
+        if (!newToken) {
+          throw new Error("Refresh token returned null");
+        }
 
         isRefreshing = false;
         onRefreshed(newToken);
@@ -66,7 +76,7 @@ apiClient.interceptors.response.use(
         return apiClient(originalRequest);
       } catch (refreshServerError) {
         isRefreshing = false;
-        refreshSubscribers = [];
+        onRefreshFailed(refreshServerError);
 
         const authStore = useAuthStore();
         authStore.logout();

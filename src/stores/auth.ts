@@ -29,6 +29,8 @@ const isTokenExpiringSoon = (
   }
 };
 
+let refreshPromise: Promise<string | null> | null = null;
+
 export const useAuthStore = defineStore("auth", () => {
   // State
   const token = ref<string | null>(localStorage.getItem("lil_token"));
@@ -98,23 +100,36 @@ export const useAuthStore = defineStore("auth", () => {
   };
 
   const refreshToken = async (): Promise<string | null> => {
-    try {
-      const { data } = await axios.post(
-        `${import.meta.env.VITE_API_URL || "http://localhost:3000"}/auth/refresh`,
-        {},
-        { withCredentials: true },
-      );
-      if (data?.token) {
-        setToken(data.token);
-        return data.token;
-      }
-      return null;
-    } catch (err) {
-      logout();
-      const uiStore = useUIStore();
-      uiStore.isLoginModalOpen = true;
-      return null;
+    if (refreshPromise) {
+      return refreshPromise;
     }
+
+    refreshPromise = (async () => {
+      try {
+        const { data } = await axios.post(
+          `${import.meta.env.VITE_API_URL || "http://localhost:3000"}/auth/refresh`,
+          {},
+          { withCredentials: true },
+        );
+        if (data?.token) {
+          setToken(data.token);
+          return data.token;
+        }
+        logout();
+        const uiStore = useUIStore();
+        uiStore.isLoginModalOpen = true;
+        return null;
+      } catch (err) {
+        logout();
+        const uiStore = useUIStore();
+        uiStore.isLoginModalOpen = true;
+        return null;
+      } finally {
+        refreshPromise = null;
+      }
+    })();
+
+    return refreshPromise;
   };
 
   const checkAndRefreshTokenIfNeeded = async (): Promise<void> => {
