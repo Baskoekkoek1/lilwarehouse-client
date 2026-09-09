@@ -51,7 +51,7 @@ export const useUploadStore = defineStore("upload", () => {
   const activeProcessingCount = ref(0);
 
   // --- SETTINGS ---
-  const CONCURRENCY_LIMIT = 3;
+  const CONCURRENCY_LIMIT = 6;
   const SIGNATURE_BATCH_SIZE = 50;
   const COMPLETION_BATCH_MAX_SIZE = 100;
   const COMPLETION_FLUSH_INTERVAL_MS = 3000;
