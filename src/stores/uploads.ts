@@ -38,6 +38,8 @@ export const useUploadStore = defineStore("upload", () => {
   const recentLogs = ref<LogEntry[]>([]);
   const isQueuing = ref(false);
 
+  let inFlightSignaturePromise: Promise<void> | null = null;
+
   // Batching completion queue buffer
   const completionBuffer = ref<CompletionBufferItem[]>([]);
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -407,45 +409,69 @@ export const useUploadStore = defineStore("upload", () => {
       return cached;
     }
 
-    // Proactively refresh JWT before presigned batch fetch if expiring within 2 min
-    const authStore = useAuthStore();
-    await authStore.checkAndRefreshTokenIfNeeded();
-
-    const pendingTasks = await uploadDb.upload_tasks
-      .where("status")
-      .anyOf(["PENDING", "GETTING_URL"])
-      .limit(SIGNATURE_BATCH_SIZE)
-      .toArray();
-
-    try {
-      const { data } = await apiClient.post("/uploads/presigned", {
-        files: pendingTasks.map((t) => ({
-          fileName: t.fileName,
-          folderName: t.path || "root",
-        })),
-      });
-
-      if (data?.credentials && Array.isArray(data.credentials)) {
-        data.credentials.forEach((cred: any, index: number) => {
-          const targetTask = pendingTasks[index];
-          if (targetTask) {
-            signatureCache.value[targetTask.id] = {
-              uploadUrl: cred.uploadUrl,
-              storageKey: cred.storageKey,
-            };
-          }
-        });
-      }
-
-      const result = signatureCache.value[task.id];
-      if (result) {
+    if (inFlightSignaturePromise) {
+      await inFlightSignaturePromise;
+      if (signatureCache.value[task.id]) {
+        const cached = signatureCache.value[task.id];
         delete signatureCache.value[task.id];
+        return cached;
       }
-      return result;
-    } catch (err) {
-      console.error("Signature batch request failed:", err);
-      return undefined;
     }
+
+    inFlightSignaturePromise = (async () => {
+      try {
+        // Proactively refresh JWT before presigned batch fetch if expiring within 2 min
+        const authStore = useAuthStore();
+        await authStore.checkAndRefreshTokenIfNeeded();
+
+        const uncachedPendingTasks = (
+          await uploadDb.upload_tasks
+            .where("status")
+            .anyOf(["PENDING", "GETTING_URL"])
+            .limit(SIGNATURE_BATCH_SIZE)
+            .toArray()
+        ).filter((t) => !signatureCache.value[t.id]);
+
+        if (uncachedPendingTasks.length === 0) return;
+
+        addLog(
+          `Fetching presigned URLs for batch of ${uncachedPendingTasks.length} files...`,
+          "info",
+        );
+
+        const { data } = await apiClient.post("/uploads/presigned", {
+          files: uncachedPendingTasks.map((t) => ({
+            fileName: t.fileName,
+            folderName: t.path || "root",
+          })),
+        });
+
+        if (data?.credentials && Array.isArray(data.credentials)) {
+          data.credentials.forEach((cred: any, index: number) => {
+            const targetTask = uncachedPendingTasks[index];
+            if (targetTask && cred.uploadUrl) {
+              signatureCache.value[targetTask.id] = {
+                uploadUrl: cred.uploadUrl,
+                storageKey: cred.storageKey,
+              };
+            }
+          });
+        }
+      } catch (err) {
+        addLog("Failed to fetch presigned URL batch.", "error");
+        console.error("Signature batch request failed:", err);
+      } finally {
+        inFlightSignaturePromise = null;
+      }
+    })();
+
+    await inFlightSignaturePromise;
+
+    const result = signatureCache.value[task.id];
+    if (result) {
+      delete signatureCache.value[task.id];
+    }
+    return result;
   };
 
   const retryFailedTasks = async () => {
