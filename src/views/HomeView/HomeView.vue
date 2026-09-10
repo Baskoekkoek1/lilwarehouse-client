@@ -2,7 +2,7 @@
   <h2>Welcome to LilWarehouse!</h2>
   <h3>
     {{
-      `Welcome ${userName}, but take head of what awaits the sin of greed...`
+      `Welcome ${userName}, but take head of what awaits the sin of greed....`
     }}
   </h3>
 </template>
