@@ -128,7 +128,12 @@ export const useUploadStore = defineStore("upload", () => {
         .anyOf(taskIds)
         .modify({ status: "SUCCESS", progress: 100, updatedAt: Date.now() });
 
-      await syncCounts();
+      processedCount.value += batchToFlush.length;
+      activeProcessingCount.value = Math.max(
+        0,
+        activeProcessingCount.value - batchToFlush.length,
+      );
+
       addLog(
         `Batch completion finalized ${batchToFlush.length} files.`,
         "success",
@@ -154,7 +159,11 @@ export const useUploadStore = defineStore("upload", () => {
           updatedAt: Date.now(),
         });
 
-      await syncCounts();
+      errorCount.value += batchToFlush.length;
+      activeProcessingCount.value = Math.max(
+        0,
+        activeProcessingCount.value - batchToFlush.length,
+      );
     }
   };
 
@@ -226,7 +235,7 @@ export const useUploadStore = defineStore("upload", () => {
 
       if (records.length > 0) {
         await uploadDb.upload_tasks.bulkAdd(records);
-        await syncCounts();
+        totalCount.value += records.length;
       }
 
       if (activeProcessingCount.value === 0) {
@@ -295,6 +304,8 @@ export const useUploadStore = defineStore("upload", () => {
     let taskRecord = await claimNextTask();
 
     while (taskRecord) {
+      activeProcessingCount.value++;
+
       const task: UploadTask = {
         id: taskRecord.id,
         file: taskRecord.file,
@@ -306,8 +317,6 @@ export const useUploadStore = defineStore("upload", () => {
       };
 
       try {
-        await syncCounts();
-
         const creds = await getSignature(task);
 
         if (!creds || !creds.uploadUrl) {
@@ -319,7 +328,6 @@ export const useUploadStore = defineStore("upload", () => {
           status: "UPLOADING",
           updatedAt: Date.now(),
         });
-        await syncCounts();
 
         // Exponential backoff retry loop for direct binary upload
         const MAX_RETRIES = 5;
@@ -327,22 +335,42 @@ export const useUploadStore = defineStore("upload", () => {
         let uploadSuccess = false;
         let lastError: unknown = null;
 
+        // Throttle tracking variables for DB progress writes
+        let lastPersistedProgress = 0;
+        let lastPersistedTime = 0;
+
         while (attempt < MAX_RETRIES && !uploadSuccess) {
           try {
             await axios.put(creds.uploadUrl, task.file, {
               headers: { "Content-Type": "application/octet-stream" },
               timeout: 0,
               onUploadProgress: (p) => {
-                task.progress = Math.round((p.loaded / (p.total || 1)) * 100);
-                uploadDb.upload_tasks.update(task.id, {
-                  progress: task.progress,
-                  updatedAt: Date.now(),
-                });
+                const currentProgress = Math.round(
+                  (p.loaded / (p.total || 1)) * 100,
+                );
+                task.progress = currentProgress;
+
+                // FIX: Throttle IndexedDB progress writes to avoid main-thread lockups.
+                // Only write to disk if progress jumped by >= 25% or at least 1 second passed.
+                const now = Date.now();
+                if (
+                  currentProgress === 100 ||
+                  currentProgress - lastPersistedProgress >= 25 ||
+                  now - lastPersistedTime > 1000
+                ) {
+                  lastPersistedProgress = currentProgress;
+                  lastPersistedTime = now;
+                  uploadDb.upload_tasks
+                    .update(task.id, {
+                      progress: currentProgress,
+                      updatedAt: now,
+                    })
+                    .catch(() => {}); // Non-blocking fire-and-forget
+                }
               },
             });
             uploadSuccess = true;
           } catch (err) {
-            console.log("errorrrr", err);
             attempt++;
             lastError = err;
             if (attempt < MAX_RETRIES) {
@@ -366,9 +394,9 @@ export const useUploadStore = defineStore("upload", () => {
         task.status = "FINALIZING";
         await uploadDb.upload_tasks.update(task.id, {
           status: "FINALIZING",
+          progress: 100,
           updatedAt: Date.now(),
         });
-        await syncCounts();
 
         await queueCompletionTask({
           taskId: task.id,
@@ -381,6 +409,12 @@ export const useUploadStore = defineStore("upload", () => {
 
         addLog(`Uploaded & buffered: ${task.fileName}`, "info");
       } catch (err: unknown) {
+        activeProcessingCount.value = Math.max(
+          0,
+          activeProcessingCount.value - 1,
+        );
+        errorCount.value++;
+
         task.status = "ERROR";
         const errorMsg =
           err instanceof Error ? err.message : "Unknown upload error";
@@ -391,7 +425,6 @@ export const useUploadStore = defineStore("upload", () => {
           error: errorMsg,
           updatedAt: Date.now(),
         });
-        await syncCounts();
 
         addLog(`Error [${task.fileName}]: ${errorMsg}`, "error");
       }
@@ -420,7 +453,6 @@ export const useUploadStore = defineStore("upload", () => {
 
     inFlightSignaturePromise = (async () => {
       try {
-        // Proactively refresh JWT before presigned batch fetch if expiring within 2 min
         const authStore = useAuthStore();
         await authStore.checkAndRefreshTokenIfNeeded();
 
