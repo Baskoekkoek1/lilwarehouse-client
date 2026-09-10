@@ -158,12 +158,19 @@ export const useInventoryStore = defineStore("inventory", () => {
     }
   };
 
-  const downloadFile = async (b2_file_id: string | undefined) => {
-    if (!b2_file_id) return;
-    downloadingFileId.value = b2_file_id;
+  const downloadFile = async (
+    targetId: string | undefined,
+    fallbackId?: string,
+  ) => {
+    // Prefer database item.id or b2_file_id over raw filename
+    const downloadIdentifier = targetId || fallbackId;
+
+    if (!downloadIdentifier) return;
+    downloadingFileId.value = downloadIdentifier;
+
     try {
       const response = await apiClient.get(
-        `/downloads/presigned/${b2_file_id}`,
+        `/downloads/presigned/${encodeURIComponent(downloadIdentifier)}`,
       );
       const downloadUrl = response.data?.downloadUrl;
       if (!downloadUrl) {
