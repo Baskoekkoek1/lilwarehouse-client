@@ -32,9 +32,12 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export const useUploadStore = defineStore("upload", () => {
   // --- STATE ---
   const uploadQueue = ref<Record<string, UploadTask>>({});
-  const signatureCache = ref<
-    Record<string, { uploadUrl: string; storageKey: string }>
-  >({});
+
+  const signatureCache = new Map<
+    string,
+    { uploadUrl: string; storageKey: string }
+  >();
+
   const recentLogs = ref<LogEntry[]>([]);
   const isQueuing = ref(false);
 
@@ -55,6 +58,7 @@ export const useUploadStore = defineStore("upload", () => {
   const SIGNATURE_BATCH_SIZE = 50;
   const COMPLETION_BATCH_MAX_SIZE = 100;
   const COMPLETION_FLUSH_INTERVAL_MS = 3000;
+  const CLAIM_BATCH_SIZE = 20;
 
   // --- GETTERS ---
   const isProcessing = computed(
@@ -79,19 +83,20 @@ export const useUploadStore = defineStore("upload", () => {
   };
 
   const syncCounts = async () => {
-    totalCount.value = await uploadDb.upload_tasks.count();
-    processedCount.value = await uploadDb.upload_tasks
-      .where("status")
-      .equals("SUCCESS")
-      .count();
-    errorCount.value = await uploadDb.upload_tasks
-      .where("status")
-      .equals("ERROR")
-      .count();
-    activeProcessingCount.value = await uploadDb.upload_tasks
-      .where("status")
-      .anyOf(["GETTING_URL", "UPLOADING", "FINALIZING"])
-      .count();
+    const [total, processed, errors, active] = await Promise.all([
+      uploadDb.upload_tasks.count(),
+      uploadDb.upload_tasks.where("status").equals("SUCCESS").count(),
+      uploadDb.upload_tasks.where("status").equals("ERROR").count(),
+      uploadDb.upload_tasks
+        .where("status")
+        .anyOf(["GETTING_URL", "UPLOADING", "FINALIZING"])
+        .count(),
+    ]);
+
+    totalCount.value = total;
+    processedCount.value = processed;
+    errorCount.value = errors;
+    activeProcessingCount.value = active;
   };
 
   // --- BATCH COMPLETION LOGIC ---
@@ -209,6 +214,7 @@ export const useUploadStore = defineStore("upload", () => {
   };
 
   const addUploadTasks = async (payloadItems: UploadPayloadItem[]) => {
+    addLog("Uploading files started...", "info");
     isQueuing.value = true;
     try {
       const now = Date.now();
@@ -234,7 +240,11 @@ export const useUploadStore = defineStore("upload", () => {
       });
 
       if (records.length > 0) {
-        await uploadDb.upload_tasks.bulkAdd(records);
+        const BULK_CHUNK_SIZE = 1000;
+        for (let i = 0; i < records.length; i += BULK_CHUNK_SIZE) {
+          const chunk = records.slice(i, i + BULK_CHUNK_SIZE);
+          await uploadDb.upload_tasks.bulkAdd(chunk);
+        }
         totalCount.value += records.length;
       }
 
@@ -279,31 +289,34 @@ export const useUploadStore = defineStore("upload", () => {
   };
 
   const worker = async () => {
-    const claimNextTask = async () => {
+    const claimTaskBatch = async (batchSize = CLAIM_BATCH_SIZE) => {
       return await uploadDb.transaction(
         "rw",
         uploadDb.upload_tasks,
         async () => {
-          const pending = await uploadDb.upload_tasks
+          const pendingTasks = await uploadDb.upload_tasks
             .where("status")
             .equals("PENDING")
-            .first();
+            .limit(batchSize)
+            .toArray();
 
-          if (!pending) return null;
+          if (pendingTasks.length === 0) return [];
 
-          await uploadDb.upload_tasks.update(pending.id, {
-            status: "GETTING_URL",
-            updatedAt: Date.now(),
-          });
+          const ids = pendingTasks.map((t) => t.id);
+          await uploadDb.upload_tasks
+            .where("id")
+            .anyOf(ids)
+            .modify({ status: "GETTING_URL", updatedAt: Date.now() });
 
-          return pending;
+          return pendingTasks;
         },
       );
     };
 
-    let taskRecord = await claimNextTask();
+    let taskQueue: UploadTaskRecord[] = await claimTaskBatch();
 
-    while (taskRecord) {
+    while (taskQueue.length > 0) {
+      const taskRecord = taskQueue.shift()!;
       activeProcessingCount.value++;
 
       const task: UploadTask = {
@@ -329,13 +342,11 @@ export const useUploadStore = defineStore("upload", () => {
           updatedAt: Date.now(),
         });
 
-        // Exponential backoff retry loop for direct binary upload
         const MAX_RETRIES = 5;
         let attempt = 0;
         let uploadSuccess = false;
         let lastError: unknown = null;
 
-        // Throttle tracking variables for DB progress writes
         let lastPersistedProgress = 0;
         let lastPersistedTime = 0;
 
@@ -350,8 +361,6 @@ export const useUploadStore = defineStore("upload", () => {
                 );
                 task.progress = currentProgress;
 
-                // FIX: Throttle IndexedDB progress writes to avoid main-thread lockups.
-                // Only write to disk if progress jumped by >= 25% or at least 1 second passed.
                 const now = Date.now();
                 if (
                   currentProgress === 100 ||
@@ -365,7 +374,7 @@ export const useUploadStore = defineStore("upload", () => {
                       progress: currentProgress,
                       updatedAt: now,
                     })
-                    .catch(() => {}); // Non-blocking fire-and-forget
+                    .catch(() => {});
                 }
               },
             });
@@ -429,24 +438,26 @@ export const useUploadStore = defineStore("upload", () => {
         addLog(`Error [${task.fileName}]: ${errorMsg}`, "error");
       }
 
-      taskRecord = await claimNextTask();
+      if (taskQueue.length === 0) {
+        taskQueue = await claimTaskBatch();
+      }
     }
   };
 
   const getSignature = async (
     task: UploadTask,
   ): Promise<{ uploadUrl: string; storageKey: string } | undefined> => {
-    if (signatureCache.value[task.id]) {
-      const cached = signatureCache.value[task.id];
-      delete signatureCache.value[task.id];
+    if (signatureCache.has(task.id)) {
+      const cached = signatureCache.get(task.id);
+      signatureCache.delete(task.id);
       return cached;
     }
 
     if (inFlightSignaturePromise) {
       await inFlightSignaturePromise;
-      if (signatureCache.value[task.id]) {
-        const cached = signatureCache.value[task.id];
-        delete signatureCache.value[task.id];
+      if (signatureCache.has(task.id)) {
+        const cached = signatureCache.get(task.id);
+        signatureCache.delete(task.id);
         return cached;
       }
     }
@@ -462,7 +473,7 @@ export const useUploadStore = defineStore("upload", () => {
             .anyOf(["PENDING", "GETTING_URL"])
             .limit(SIGNATURE_BATCH_SIZE)
             .toArray()
-        ).filter((t) => !signatureCache.value[t.id]);
+        ).filter((t) => !signatureCache.has(t.id));
 
         if (uncachedPendingTasks.length === 0) return;
 
@@ -482,10 +493,10 @@ export const useUploadStore = defineStore("upload", () => {
           data.credentials.forEach((cred: any, index: number) => {
             const targetTask = uncachedPendingTasks[index];
             if (targetTask && cred.uploadUrl) {
-              signatureCache.value[targetTask.id] = {
+              signatureCache.set(targetTask.id, {
                 uploadUrl: cred.uploadUrl,
                 storageKey: cred.storageKey,
-              };
+              });
             }
           });
         }
@@ -499,9 +510,9 @@ export const useUploadStore = defineStore("upload", () => {
 
     await inFlightSignaturePromise;
 
-    const result = signatureCache.value[task.id];
+    const result = signatureCache.get(task.id);
     if (result) {
-      delete signatureCache.value[task.id];
+      signatureCache.delete(task.id);
     }
     return result;
   };
@@ -546,7 +557,7 @@ export const useUploadStore = defineStore("upload", () => {
   const clearUploadQueue = async () => {
     uploadQueue.value = {};
     recentLogs.value = [];
-    signatureCache.value = {};
+    signatureCache.clear();
     completionBuffer.value = [];
     if (flushTimer) {
       clearTimeout(flushTimer);
