@@ -55,6 +55,25 @@ const handleDragOver = () => {
   isDragging.value = true;
 };
 
+const readAllDirectoryEntries = (reader: any): Promise<any[]> => {
+  return new Promise((resolve, reject) => {
+    const entries: any[] = [];
+
+    const readBatch = () => {
+      reader.readEntries((batch: any[]) => {
+        if (!batch || batch.length === 0) {
+          resolve(entries);
+        } else {
+          entries.push(...batch);
+          readBatch(); // Keep fetching next batch of 100
+        }
+      }, reject);
+    };
+
+    readBatch();
+  });
+};
+
 const handleDrop = async (e: DragEvent) => {
   isDragging.value = false;
   if (props.isProcessing) return;
@@ -66,13 +85,14 @@ const handleDrop = async (e: DragEvent) => {
 
   const traverseEntries = async (entry: any, path = "") => {
     if (entry.isFile) {
-      const file = await new Promise<File>((resolve) => entry.file(resolve));
+      const file = await new Promise<File>((resolve, reject) =>
+        entry.file(resolve, reject),
+      );
       uploadQueue.push({ file, path });
     } else if (entry.isDirectory) {
       const reader = entry.createReader();
-      const entries = await new Promise<any[]>((resolve) =>
-        reader.readEntries(resolve),
-      );
+      const entries = await readAllDirectoryEntries(reader);
+
       for (const childEntry of entries) {
         await traverseEntries(childEntry, `${path}${entry.name}/`);
       }
@@ -98,10 +118,27 @@ const handleFileSelect = (e: Event) => {
 
   const target = e.target as HTMLInputElement;
   if (target.files) {
-    const filesArray = Array.from(target.files).map((file) => ({
-      file,
-      path: "",
-    }));
+    const filesArray: { file: File; path: string }[] = [];
+
+    for (let i = 0; i < target.files.length; i++) {
+      const file = target.files[i];
+      if (!file) continue;
+      let relativePath = file.webkitRelativePath || "";
+      if (relativePath.includes("/")) {
+        relativePath = relativePath.substring(
+          0,
+          relativePath.lastIndexOf("/") + 1,
+        );
+      } else {
+        relativePath = "";
+      }
+
+      filesArray.push({
+        file,
+        path: relativePath,
+      });
+    }
+
     emit("files-selected", filesArray);
   }
   target.value = "";
@@ -112,7 +149,6 @@ const triggerFileInput = () => {
   fileInput.value?.click();
 };
 </script>
-
 <style scoped>
 .dropzone-container {
   display: flex;
