@@ -33,6 +33,8 @@ export const useUploadStore = defineStore("upload", () => {
   // --- STATE ---
   const uploadQueue = ref<Record<string, UploadTask>>({});
 
+  const fileMap = new Map<string, File>();
+
   const signatureCache = new Map<
     string,
     { uploadUrl: string; storageKey: string }
@@ -224,9 +226,11 @@ export const useUploadStore = defineStore("upload", () => {
         const name = item.file.name;
         if (name.startsWith(".") || name === "Thumbs.db") return;
 
+        const id = crypto.randomUUID();
+        fileMap.set(id, item.file);
+
         records.push({
-          id: crypto.randomUUID(),
-          file: item.file,
+          id,
           fileName: item.file.name,
           path: item.path,
           fileSize: item.file.size,
@@ -319,9 +323,35 @@ export const useUploadStore = defineStore("upload", () => {
       const taskRecord = taskQueue.shift()!;
       activeProcessingCount.value++;
 
+      const rawFile = fileMap.get(taskRecord.id);
+
+      if (!rawFile) {
+        activeProcessingCount.value = Math.max(
+          0,
+          activeProcessingCount.value - 1,
+        );
+        errorCount.value++;
+
+        const missingErr =
+          "File pointer lost due to page reload. Re-select files to retry.";
+
+        await uploadDb.upload_tasks.update(taskRecord.id, {
+          status: "ERROR",
+          error: missingErr,
+          updatedAt: Date.now(),
+        });
+
+        addLog(`Error [${taskRecord.fileName}]: ${missingErr}`, "error");
+
+        if (taskQueue.length === 0) {
+          taskQueue = await claimTaskBatch();
+        }
+        continue;
+      }
+
       const task: UploadTask = {
         id: taskRecord.id,
-        file: taskRecord.file,
+        file: rawFile,
         fileName: taskRecord.fileName,
         path: taskRecord.path,
         status: "GETTING_URL",
@@ -416,6 +446,7 @@ export const useUploadStore = defineStore("upload", () => {
           fileSize: task.file.size,
         });
 
+        fileMap.delete(task.id);
         addLog(`Uploaded & buffered: ${task.fileName}`, "info");
       } catch (err: unknown) {
         activeProcessingCount.value = Math.max(
@@ -558,6 +589,7 @@ export const useUploadStore = defineStore("upload", () => {
     uploadQueue.value = {};
     recentLogs.value = [];
     signatureCache.clear();
+    fileMap.clear();
     completionBuffer.value = [];
     if (flushTimer) {
       clearTimeout(flushTimer);

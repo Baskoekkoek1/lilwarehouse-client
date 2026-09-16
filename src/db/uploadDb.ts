@@ -2,7 +2,6 @@ import Dexie, { type Table } from "dexie";
 
 export interface UploadTaskRecord {
   id: string; // UUID or unique hash
-  file: File; // Native browser File object stored on disk
   fileName: string;
   path: string;
   fileSize: number;
