@@ -84,10 +84,33 @@ export const useUploadStore = defineStore("upload", () => {
     if (recentLogs.value.length > 100) recentLogs.value.pop();
   };
 
+  const checkStorageQuota = async () => {
+    if (navigator.storage && navigator.storage.estimate) {
+      try {
+        const { quota, usage } = await navigator.storage.estimate();
+        if (quota !== undefined && usage !== undefined) {
+          const availableMB = Math.round((quota - usage) / (1024 * 1024));
+          addLog(
+            `Browser storage quota checked: ~${availableMB}MB available.`,
+            "info",
+          );
+
+          if (quota - usage < 50 * 1024 * 1024) {
+            addLog(
+              "Warning: Very low browser local storage space remaining.",
+              "error",
+            );
+          }
+        }
+      } catch (err) {
+        // Quota estimate unavailable or restricted, proceed normally
+      }
+    }
+  };
+
   const syncCounts = async () => {
-    const [total, processed, errors, active] = await Promise.all([
-      uploadDb.upload_tasks.count(),
-      uploadDb.upload_tasks.where("status").equals("SUCCESS").count(),
+    const [dbPending, errors, active] = await Promise.all([
+      uploadDb.upload_tasks.where("status").equals("PENDING").count(),
       uploadDb.upload_tasks.where("status").equals("ERROR").count(),
       uploadDb.upload_tasks
         .where("status")
@@ -95,10 +118,9 @@ export const useUploadStore = defineStore("upload", () => {
         .count(),
     ]);
 
-    totalCount.value = total;
-    processedCount.value = processed;
     errorCount.value = errors;
     activeProcessingCount.value = active;
+    totalCount.value = processedCount.value + dbPending + errors + active;
   };
 
   // --- BATCH COMPLETION LOGIC ---
@@ -129,11 +151,9 @@ export const useUploadStore = defineStore("upload", () => {
         })),
       });
 
+      // Eagerly delete finalized task records from IndexedDB
       const taskIds = batchToFlush.map((i) => i.taskId);
-      await uploadDb.upload_tasks
-        .where("id")
-        .anyOf(taskIds)
-        .modify({ status: "SUCCESS", progress: 100, updatedAt: Date.now() });
+      await uploadDb.upload_tasks.where("id").anyOf(taskIds).delete();
 
       processedCount.value += batchToFlush.length;
       activeProcessingCount.value = Math.max(
@@ -220,6 +240,8 @@ export const useUploadStore = defineStore("upload", () => {
     isQueuing.value = true;
 
     try {
+      await checkStorageQuota();
+
       const now = Date.now();
       const records: UploadTaskRecord[] = [];
 
@@ -259,15 +281,14 @@ export const useUploadStore = defineStore("upload", () => {
           await uploadDb.upload_tasks.bulkAdd(chunk);
 
           stagedCount += chunk.length;
-          totalCount.value += chunk.length; // Ticks up live in the UI
+          totalCount.value += chunk.length;
 
-          // Log progress every 5,000 files and yield UI thread brief moment to render
           if (stagedCount % 5000 === 0 || stagedCount === totalToQueue) {
             addLog(
               `Indexed ${stagedCount} / ${totalToQueue} files into database...`,
               "info",
             );
-            await sleep(0); // Yield to main thread for smooth UI updates
+            await sleep(0); // Yield main thread to update UI
           }
         }
       }
@@ -305,7 +326,6 @@ export const useUploadStore = defineStore("upload", () => {
       await flushCompletionBuffer();
       addLog("All pending tasks processed.", "success");
 
-      await uploadDb.upload_tasks.where("status").equals("SUCCESS").delete();
       await syncCounts();
     } catch (err: unknown) {
       addLog("The worker pool encountered a critical error.", "error");
@@ -466,6 +486,7 @@ export const useUploadStore = defineStore("upload", () => {
           fileSize: task.file.size,
         });
 
+        // Purge raw file handle from memory as soon as upload succeeds
         fileMap.delete(task.id);
         addLog(`Uploaded & buffered: ${task.fileName}`, "info");
       } catch (err: unknown) {
@@ -611,6 +632,7 @@ export const useUploadStore = defineStore("upload", () => {
     signatureCache.clear();
     fileMap.clear();
     completionBuffer.value = [];
+    processedCount.value = 0;
     if (flushTimer) {
       clearTimeout(flushTimer);
       flushTimer = null;
