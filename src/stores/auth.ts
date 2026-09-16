@@ -138,6 +138,19 @@ export const useAuthStore = defineStore("auth", () => {
     }
   };
 
+  const initAuth = async (): Promise<boolean> => {
+    if (!token.value) return false;
+
+    await checkAndRefreshTokenIfNeeded();
+
+    if (token.value) {
+      await fetchUserProfile();
+      return !!user.value;
+    }
+
+    return false;
+  };
+
   return {
     token,
     user,
@@ -150,5 +163,6 @@ export const useAuthStore = defineStore("auth", () => {
     fetchUserProfile,
     refreshToken,
     checkAndRefreshTokenIfNeeded,
+    initAuth,
   };
 });
