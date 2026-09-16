@@ -216,8 +216,9 @@ export const useUploadStore = defineStore("upload", () => {
   };
 
   const addUploadTasks = async (payloadItems: UploadPayloadItem[]) => {
-    addLog("Uploading files started...", "info");
+    addLog("Preparing and indexing files...", "info");
     isQueuing.value = true;
+
     try {
       const now = Date.now();
       const records: UploadTaskRecord[] = [];
@@ -243,13 +244,32 @@ export const useUploadStore = defineStore("upload", () => {
         });
       });
 
-      if (records.length > 0) {
+      const totalToQueue = records.length;
+      addLog(
+        `Found ${totalToQueue} valid files to index. Staging to database...`,
+        "info",
+      );
+
+      if (totalToQueue > 0) {
         const BULK_CHUNK_SIZE = 1000;
+        let stagedCount = 0;
+
         for (let i = 0; i < records.length; i += BULK_CHUNK_SIZE) {
           const chunk = records.slice(i, i + BULK_CHUNK_SIZE);
           await uploadDb.upload_tasks.bulkAdd(chunk);
+
+          stagedCount += chunk.length;
+          totalCount.value += chunk.length; // Ticks up live in the UI
+
+          // Log progress every 5,000 files and yield UI thread brief moment to render
+          if (stagedCount % 5000 === 0 || stagedCount === totalToQueue) {
+            addLog(
+              `Indexed ${stagedCount} / ${totalToQueue} files into database...`,
+              "info",
+            );
+            await sleep(0); // Yield to main thread for smooth UI updates
+          }
         }
-        totalCount.value += records.length;
       }
 
       if (activeProcessingCount.value === 0) {
