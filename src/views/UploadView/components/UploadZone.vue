@@ -9,7 +9,6 @@
       @dragover.prevent="handleDragOver"
       @dragleave="isDragging = false"
       @drop.prevent="handleDrop"
-      @click="triggerFileInput"
       :tabindex="isProcessing ? -1 : 0"
     >
       <div class="dropzone-header">
@@ -20,15 +19,49 @@
         />
         <template v-else>
           <v-icon size="64" color="primary">mdi-cloud-upload-outline</v-icon>
-          <p>Drag & Drop files or folders here or click to browse</p>
+          <p class="text-subtitle-1">Drag & drop files or folders here</p>
+
+          <!-- Explicit browse buttons for native limitations -->
+          <div class="browse-actions" @click.stop>
+            <v-btn
+              variant="outlined"
+              size="small"
+              color="primary"
+              :disabled="isProcessing"
+              @click="fileInput?.click()"
+            >
+              Upload Files
+            </v-btn>
+            <v-btn
+              variant="outlined"
+              size="small"
+              color="primary"
+              :disabled="isProcessing"
+              @click="folderInput?.click()"
+            >
+              Upload Folder
+            </v-btn>
+          </div>
         </template>
       </div>
     </div>
 
+    <!-- Hidden input for individual / multiple files -->
     <input
       ref="fileInput"
       type="file"
       multiple
+      :disabled="isProcessing"
+      @change="handleFileSelect"
+      class="hidden-input"
+    />
+
+    <!-- Hidden input for folder upload -->
+    <input
+      ref="folderInput"
+      type="file"
+      webkitdirectory
+      directory
       :disabled="isProcessing"
       @change="handleFileSelect"
       class="hidden-input"
@@ -43,29 +76,32 @@ const props = defineProps<{
   isProcessing: boolean;
 }>();
 
-const isDragging = ref<boolean>(false);
-const fileInput = ref<HTMLInputElement | null>(null);
-
 const emit = defineEmits<{
   (e: "files-selected", payload: { file: File; path: string }[]): void;
 }>();
+
+const isDragging = ref<boolean>(false);
+const fileInput = ref<HTMLInputElement | null>(null);
+const folderInput = ref<HTMLInputElement | null>(null);
 
 const handleDragOver = () => {
   if (props.isProcessing) return;
   isDragging.value = true;
 };
 
-const readAllDirectoryEntries = (reader: any): Promise<any[]> => {
+const readAllDirectoryEntries = (
+  reader: FileSystemDirectoryReader,
+): Promise<FileSystemEntry[]> => {
   return new Promise((resolve, reject) => {
-    const entries: any[] = [];
+    const entries: FileSystemEntry[] = [];
 
     const readBatch = () => {
-      reader.readEntries((batch: any[]) => {
+      reader.readEntries((batch) => {
         if (!batch || batch.length === 0) {
           resolve(entries);
         } else {
           entries.push(...batch);
-          readBatch(); // Keep fetching next batch of 100
+          readBatch();
         }
       }, reject);
     };
@@ -83,15 +119,15 @@ const handleDrop = async (e: DragEvent) => {
 
   const uploadQueue: { file: File; path: string }[] = [];
 
-  const traverseEntries = async (entry: any, path = "") => {
+  const traverseEntries = async (entry: FileSystemEntry, path = "") => {
     if (entry.isFile) {
       const file = await new Promise<File>((resolve, reject) =>
-        entry.file(resolve, reject),
+        (entry as FileSystemFileEntry).file(resolve, reject),
       );
       uploadQueue.push({ file, path });
     } else if (entry.isDirectory) {
-      const reader = entry.createReader();
-      const entries = await readAllDirectoryEntries(reader);
+      const dirReader = (entry as FileSystemDirectoryEntry).createReader();
+      const entries = await readAllDirectoryEntries(dirReader);
 
       for (const childEntry of entries) {
         await traverseEntries(childEntry, `${path}${entry.name}/`);
@@ -99,15 +135,10 @@ const handleDrop = async (e: DragEvent) => {
     }
   };
 
-  const itemsArray = Array.from(items);
-  const promises = [];
-
-  for (const item of itemsArray) {
-    const entry = item.webkitGetAsEntry();
-    if (entry) {
-      promises.push(traverseEntries(entry));
-    }
-  }
+  const promises = Array.from(items)
+    .map((item) => item.webkitGetAsEntry())
+    .filter((entry): entry is FileSystemEntry => entry !== null)
+    .map((entry) => traverseEntries(entry));
 
   await Promise.all(promises);
   emit("files-selected", uploadQueue);
@@ -123,6 +154,7 @@ const handleFileSelect = (e: Event) => {
     for (let i = 0; i < target.files.length; i++) {
       const file = target.files[i];
       if (!file) continue;
+
       let relativePath = file.webkitRelativePath || "";
       if (relativePath.includes("/")) {
         relativePath = relativePath.substring(
@@ -133,22 +165,15 @@ const handleFileSelect = (e: Event) => {
         relativePath = "";
       }
 
-      filesArray.push({
-        file,
-        path: relativePath,
-      });
+      filesArray.push({ file, path: relativePath });
     }
 
     emit("files-selected", filesArray);
   }
   target.value = "";
 };
-
-const triggerFileInput = () => {
-  if (props.isProcessing) return;
-  fileInput.value?.click();
-};
 </script>
+
 <style scoped>
 .dropzone-container {
   display: flex;
@@ -167,8 +192,6 @@ const triggerFileInput = () => {
   flex-direction: column;
   align-items: center;
   gap: 1rem;
-  cursor: pointer;
-  outline: none;
   transition: all 0.2s ease;
   background: rgba(255, 255, 255, 0.05);
 }
@@ -178,6 +201,11 @@ const triggerFileInput = () => {
   flex-direction: column;
   align-items: center;
   gap: 1rem;
+}
+
+.browse-actions {
+  display: flex;
+  gap: 0.75rem;
 }
 
 .is-dragging {
