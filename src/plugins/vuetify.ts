@@ -9,5 +9,18 @@ export default createVuetify({
   directives,
   theme: {
     defaultTheme: "dark",
+    themes: {
+      dark: {
+        dark: true,
+        colors: {
+          background: "#09090B", // Main page background
+          surface: "#18181B", // Tables, cards, modals, and upload logs
+          primary: "#3B82F6", // Main accent color
+          secondary: "#27272A", // Subtle button backgrounds
+          error: "#EF4444", // Soft red for delete actions
+          success: "#10B981", // Crisp green for upload completion status
+        },
+      },
+    },
   },
 });
