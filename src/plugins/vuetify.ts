@@ -7,6 +7,24 @@ import * as directives from "vuetify/directives";
 export default createVuetify({
   components,
   directives,
+  // Standardize rounded corners across components globally
+  defaults: {
+    VCard: {
+      rounded: "lg",
+    },
+    VBtn: {
+      rounded: "lg",
+    },
+    VTextField: {
+      rounded: "lg",
+    },
+    VSelect: {
+      rounded: "lg",
+    },
+    VDataTable: {
+      rounded: "lg",
+    },
+  },
   theme: {
     defaultTheme: "dark",
     themes: {
