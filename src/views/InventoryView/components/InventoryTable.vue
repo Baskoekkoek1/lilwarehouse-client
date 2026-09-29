@@ -1,134 +1,140 @@
 <template>
   <div v-if="inventory.currentDirectoryContent.length > 0">
-    <v-table theme="dark" class="rounded-lg border">
-      <thead>
-        <tr>
-          <th class="text-uppercase text-caption font-weight-bold">Name</th>
-          <th class="text-uppercase text-caption font-weight-bold text-right">
-            Size
-          </th>
-          <th class="text-uppercase text-caption font-weight-bold text-right">
-            Uploaded
-          </th>
-          <th class="text-right pe-4">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr
-          v-for="item in inventory.currentDirectoryContent"
-          :key="item.id"
-          class="inventory-row"
-        >
-          <!-- NAME & ICON -->
-          <td
-            @click="handleItemClick(item)"
-            :class="{ 'folder-row': item.type === 'folder' }"
-            class="py-3"
+    <!-- Integrated Card Shell -->
+    <v-card
+      flat
+      color="surface"
+      class="border rounded-lg mx-auto"
+      style="max-width: 1200px"
+    >
+      <!-- Integrated Top Header Bar -->
+      <div class="d-flex align-center justify-space-between px-4 py-3 border-b">
+        <div class="d-flex align-center ga-2">
+          <v-icon icon="mdi-folder-outline" size="18" color="primary" />
+
+          <!-- Dynamic Path Breadcrumbs -->
+          <v-breadcrumbs
+            :items="breadcrumbItems"
+            class="pa-0 text-body-2"
+            active-color="white"
+            color="grey-lighten-1"
           >
-            <div class="d-flex align-center">
+            <template v-slot:divider>
               <v-icon
-                :icon="getFileIcon(item.file_name, item.type)"
-                class="mr-3"
-                :color="item.type === 'folder' ? 'primary' : 'grey-lighten-1'"
+                icon="mdi-chevron-right"
+                size="14"
+                color="grey-darken-1"
               />
+            </template>
+
+            <template v-slot:title="{ item }">
               <span
-                class="text-truncate font-weight-medium"
-                style="max-width: 320px"
+                class="cursor-pointer"
+                :class="{
+                  'text-white font-weight-medium': item.disabled,
+                  'text-grey-lighten-1': !item.disabled,
+                }"
+                @click="
+                  !item.disabled &&
+                  inventory.navigateTo(
+                    (item as any).raw?.path || (item as any).path,
+                  )
+                "
               >
-                {{ item.file_name }}
-                <v-tooltip activator="parent" location="top">
-                  {{ item.file_name }}
-                </v-tooltip>
+                {{ item.title }}
               </span>
-            </div>
-          </td>
+            </template>
+          </v-breadcrumbs>
+        </div>
 
-          <!-- SIZE -->
-          <td class="text-right text-grey-lighten-1">
-            {{
-              item.type === "folder" ? "--" : formatBytes(item.file_size || 0)
-            }}
-          </td>
+        <!-- Folder Item Stats -->
+        <div class="d-flex align-center ga-3">
+          <span class="text-caption text-grey-lighten-1">
+            {{ inventory.currentDirectoryContent.length }} items
+          </span>
+        </div>
+      </div>
 
-          <!-- UPLOADED DATE -->
-          <td class="text-right text-grey-lighten-1 text-caption">
-            {{ formatDate(item.upload_date) }}
-          </td>
-
-          <!-- ACTIONS -->
-          <td class="text-right" style="width: 170px">
-            <div
-              class="d-flex align-center justify-end w-100 pe-1 ga-1"
-              style="min-height: 36px"
+      <!-- Inventory Table Content -->
+      <v-table theme="dark" class="bg-transparent">
+        <thead>
+          <tr>
+            <th class="text-uppercase text-caption font-weight-bold">Name</th>
+            <th class="text-uppercase text-caption font-weight-bold text-right">
+              Size
+            </th>
+            <th class="text-uppercase text-caption font-weight-bold text-right">
+              Uploaded
+            </th>
+            <th class="text-right pe-4">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="item in inventory.currentDirectoryContent"
+            :key="item.id"
+            class="inventory-row"
+          >
+            <!-- NAME & ICON -->
+            <td
+              @click="handleItemClick(item)"
+              :class="{ 'folder-row': item.type === 'folder' }"
+              class="py-3"
             >
-              <!-- FOLDER ACTIONS -->
-              <template v-if="item.type === 'folder'">
-                <!-- PENDING / QUEUED STATE -->
-                <template
-                  v-if="getFolderJobStatus(item.file_name) === 'PENDING'"
+              <div class="d-flex align-center">
+                <v-icon
+                  :icon="getFileIcon(item.file_name, item.type)"
+                  class="mr-3"
+                  :color="item.type === 'folder' ? 'primary' : 'grey-lighten-1'"
+                />
+                <span
+                  class="text-truncate font-weight-medium"
+                  style="max-width: 320px"
                 >
-                  <v-progress-circular
-                    indeterminate
-                    size="16"
-                    width="2"
-                    color="warning"
-                    class="mr-1"
-                  />
-                  <span
-                    class="text-caption text-warning font-weight-medium mr-1"
-                  >
-                    Queued
-                  </span>
-                  <v-btn
-                    icon="mdi-close-circle"
-                    variant="text"
-                    density="compact"
-                    color="error"
-                    class="action-btn"
-                    @click.stop="
-                      jobsStore.cancelJob(getJob(item.file_name)!.id)
-                    "
-                  >
-                    <v-tooltip activator="parent" location="top"
-                      >Cancel</v-tooltip
-                    >
-                  </v-btn>
-                </template>
+                  {{ item.file_name }}
+                  <v-tooltip activator="parent" location="top">
+                    {{ item.file_name }}
+                  </v-tooltip>
+                </span>
+              </div>
+            </td>
 
-                <!-- PROCESSING STATE -->
-                <template
-                  v-else-if="
-                    getFolderJobStatus(item.file_name) === 'PROCESSING' ||
-                    getFolderJobStatus(item.file_name) === 'RUNNING'
-                  "
-                >
-                  <div
-                    class="w-100 flex-grow-1 mr-1 text-left d-flex align-center ga-2"
-                    style="max-width: 140px"
+            <!-- SIZE -->
+            <td class="text-right text-grey-lighten-1">
+              {{
+                item.type === "folder" ? "--" : formatBytes(item.file_size || 0)
+              }}
+            </td>
+
+            <!-- UPLOADED DATE -->
+            <td class="text-right text-grey-lighten-1 text-caption">
+              {{ formatDate(item.upload_date) }}
+            </td>
+
+            <!-- ACTIONS -->
+            <td class="text-right" style="width: 170px">
+              <div
+                class="d-flex align-center justify-end w-100 pe-1 ga-1"
+                style="min-height: 36px"
+              >
+                <!-- FOLDER ACTIONS -->
+                <template v-if="item.type === 'folder'">
+                  <!-- PENDING / QUEUED STATE -->
+                  <template
+                    v-if="getFolderJobStatus(item.file_name) === 'PENDING'"
                   >
-                    <v-progress-linear
-                      v-if="!getJob(item.file_name)?.total_files"
+                    <v-progress-circular
                       indeterminate
-                      color="primary"
-                      height="10"
-                      rounded
-                      striped
+                      size="16"
+                      width="2"
+                      color="warning"
+                      class="mr-1"
                     />
-                    <v-progress-linear
-                      v-else
-                      :model-value="getJobProgress(item.file_name)"
-                      color="primary"
-                      height="10"
-                      rounded
-                      striped
+                    <span
+                      class="text-caption text-warning font-weight-medium mr-1"
                     >
-                      <template v-slot:default="{ value }">
-                        <strong class="text-white" style="font-size: 8px"
-                          >{{ value }}%</strong
-                        >
-                      </template>
-                    </v-progress-linear>
-
+                      Queued
+                    </span>
                     <v-btn
                       icon="mdi-close-circle"
                       variant="text"
@@ -143,161 +149,216 @@
                         >Cancel</v-tooltip
                       >
                     </v-btn>
-                  </div>
-                </template>
+                  </template>
 
-                <!-- CANCELLED STATE -->
-                <template
-                  v-else-if="getFolderJobStatus(item.file_name) === 'CANCELLED'"
-                >
-                  <span
-                    class="text-caption text-warning font-weight-medium mr-1"
+                  <!-- PROCESSING STATE -->
+                  <template
+                    v-else-if="
+                      getFolderJobStatus(item.file_name) === 'PROCESSING' ||
+                      getFolderJobStatus(item.file_name) === 'RUNNING'
+                    "
                   >
-                    Cancelled
-                  </span>
+                    <div
+                      class="w-100 flex-grow-1 mr-1 text-left d-flex align-center ga-2"
+                      style="max-width: 140px"
+                    >
+                      <v-progress-linear
+                        v-if="!getJob(item.file_name)?.total_files"
+                        indeterminate
+                        color="primary"
+                        height="10"
+                        rounded
+                        striped
+                      />
+                      <v-progress-linear
+                        v-else
+                        :model-value="getJobProgress(item.file_name)"
+                        color="primary"
+                        height="10"
+                        rounded
+                        striped
+                      >
+                        <template v-slot:default="{ value }">
+                          <strong class="text-white" style="font-size: 8px"
+                            >{{ value }}%</strong
+                          >
+                        </template>
+                      </v-progress-linear>
+
+                      <v-btn
+                        icon="mdi-close-circle"
+                        variant="text"
+                        density="compact"
+                        color="error"
+                        class="action-btn"
+                        @click.stop="
+                          jobsStore.cancelJob(getJob(item.file_name)!.id)
+                        "
+                      >
+                        <v-tooltip activator="parent" location="top"
+                          >Cancel</v-tooltip
+                        >
+                      </v-btn>
+                    </div>
+                  </template>
+
+                  <!-- CANCELLED STATE -->
+                  <template
+                    v-else-if="
+                      getFolderJobStatus(item.file_name) === 'CANCELLED'
+                    "
+                  >
+                    <span
+                      class="text-caption text-warning font-weight-medium mr-1"
+                    >
+                      Cancelled
+                    </span>
+                    <v-btn
+                      icon="mdi-refresh"
+                      variant="text"
+                      density="comfortable"
+                      color="warning"
+                      class="action-btn"
+                      @click.stop="handleDownloadClick(item)"
+                    >
+                      <v-tooltip activator="parent" location="top"
+                        >Try Again</v-tooltip
+                      >
+                    </v-btn>
+                  </template>
+
+                  <!-- FAILED STATE -->
+                  <template
+                    v-else-if="getFolderJobStatus(item.file_name) === 'FAILED'"
+                  >
+                    <span
+                      class="text-caption text-error font-weight-medium mr-1"
+                    >
+                      Failed
+                    </span>
+                    <v-btn
+                      icon="mdi-refresh"
+                      variant="text"
+                      density="comfortable"
+                      color="error"
+                      class="action-btn"
+                      @click.stop="handleDownloadClick(item)"
+                    >
+                      <v-tooltip activator="parent" location="top"
+                        >Try Again</v-tooltip
+                      >
+                    </v-btn>
+                  </template>
+
+                  <!-- COMPLETED / IDLE STATE BUTTON -->
                   <v-btn
-                    icon="mdi-refresh"
+                    v-else
+                    :icon="
+                      getFolderJobStatus(item.file_name) === 'COMPLETED'
+                        ? 'mdi-download-box'
+                        : 'mdi-folder-download'
+                    "
                     variant="text"
                     density="comfortable"
-                    color="warning"
+                    :color="
+                      getFolderJobStatus(item.file_name) === 'COMPLETED'
+                        ? 'success'
+                        : 'primary'
+                    "
                     class="action-btn"
                     @click.stop="handleDownloadClick(item)"
                   >
-                    <v-tooltip activator="parent" location="top"
-                      >Try Again</v-tooltip
-                    >
+                    <v-tooltip activator="parent" location="top">
+                      {{
+                        getFolderJobStatus(item.file_name) === "COMPLETED"
+                          ? "Download ZIP"
+                          : "Download Folder"
+                      }}
+                    </v-tooltip>
                   </v-btn>
-                </template>
 
-                <!-- FAILED STATE -->
-                <template
-                  v-else-if="getFolderJobStatus(item.file_name) === 'FAILED'"
-                >
-                  <span class="text-caption text-error font-weight-medium mr-1">
-                    Failed
-                  </span>
+                  <!-- DELETE FOLDER BUTTON -->
                   <v-btn
-                    icon="mdi-refresh"
+                    icon
                     variant="text"
                     density="comfortable"
                     color="error"
                     class="action-btn"
-                    @click.stop="handleDownloadClick(item)"
+                    :disabled="inventory.deletingFolderName === item.file_name"
+                    @click.stop="handleDeleteFolderClick(item)"
                   >
-                    <v-tooltip activator="parent" location="top"
-                      >Try Again</v-tooltip
-                    >
+                    <v-progress-circular
+                      v-if="inventory.deletingFolderName === item.file_name"
+                      indeterminate
+                      size="18"
+                      width="2"
+                      color="error"
+                    />
+                    <v-icon v-else icon="mdi-delete" />
+                    <v-tooltip activator="parent" location="top">
+                      Delete Folder
+                    </v-tooltip>
                   </v-btn>
                 </template>
 
-                <!-- COMPLETED / IDLE STATE BUTTON -->
-                <v-btn
-                  v-else
-                  :icon="
-                    getFolderJobStatus(item.file_name) === 'COMPLETED'
-                      ? 'mdi-download-box'
-                      : 'mdi-folder-download'
-                  "
-                  variant="text"
-                  density="comfortable"
-                  :color="
-                    getFolderJobStatus(item.file_name) === 'COMPLETED'
-                      ? 'success'
-                      : 'primary'
-                  "
-                  class="action-btn"
-                  @click.stop="handleDownloadClick(item)"
-                >
-                  <v-tooltip activator="parent" location="top">
-                    {{
-                      getFolderJobStatus(item.file_name) === "COMPLETED"
-                        ? "Download ZIP"
-                        : "Download Folder"
-                    }}
-                  </v-tooltip>
-                </v-btn>
-
-                <!-- DELETE FOLDER BUTTON -->
-                <v-btn
-                  icon
-                  variant="text"
-                  density="comfortable"
-                  color="error"
-                  class="action-btn"
-                  :disabled="inventory.deletingFolderName === item.file_name"
-                  @click.stop="handleDeleteFolderClick(item)"
-                >
-                  <v-progress-circular
-                    v-if="inventory.deletingFolderName === item.file_name"
-                    indeterminate
-                    size="18"
-                    width="2"
-                    color="error"
-                  />
-                  <v-icon v-else icon="mdi-delete" />
-                  <v-tooltip activator="parent" location="top">
-                    Delete Folder
-                  </v-tooltip>
-                </v-btn>
-              </template>
-
-              <!-- FILE ACTIONS (DOWNLOAD & DELETE) -->
-              <template v-else>
-                <v-btn
-                  icon
-                  variant="text"
-                  density="comfortable"
-                  color="primary"
-                  class="action-btn"
-                  :disabled="
-                    inventory.downloadingFileId === item.b2_file_id ||
-                    inventory.deletingFileId === item.id
-                  "
-                  @click.stop="handleDownloadClick(item)"
-                >
-                  <v-progress-circular
-                    v-if="inventory.downloadingFileId === item.b2_file_id"
-                    indeterminate
-                    size="18"
-                    width="2"
+                <!-- FILE ACTIONS (DOWNLOAD & DELETE) -->
+                <template v-else>
+                  <v-btn
+                    icon
+                    variant="text"
+                    density="comfortable"
                     color="primary"
-                  />
-                  <v-icon v-else icon="mdi-download" />
-                  <v-tooltip activator="parent" location="top">
-                    Download File
-                  </v-tooltip>
-                </v-btn>
+                    class="action-btn"
+                    :disabled="
+                      inventory.downloadingFileId === item.b2_file_id ||
+                      inventory.deletingFileId === item.id
+                    "
+                    @click.stop="handleDownloadClick(item)"
+                  >
+                    <v-progress-circular
+                      v-if="inventory.downloadingFileId === item.b2_file_id"
+                      indeterminate
+                      size="18"
+                      width="2"
+                      color="primary"
+                    />
+                    <v-icon v-else icon="mdi-download" />
+                    <v-tooltip activator="parent" location="top">
+                      Download File
+                    </v-tooltip>
+                  </v-btn>
 
-                <v-btn
-                  icon
-                  variant="text"
-                  density="comfortable"
-                  color="error"
-                  class="action-btn"
-                  :disabled="
-                    inventory.downloadingFileId === item.b2_file_id ||
-                    inventory.deletingFileId === item.id
-                  "
-                  @click.stop="handleDeleteClick(item)"
-                >
-                  <v-progress-circular
-                    v-if="inventory.deletingFileId === item.id"
-                    indeterminate
-                    size="18"
-                    width="2"
+                  <v-btn
+                    icon
+                    variant="text"
+                    density="comfortable"
                     color="error"
-                  />
-                  <v-icon v-else icon="mdi-delete" />
-                  <v-tooltip activator="parent" location="top">
-                    Delete File
-                  </v-tooltip>
-                </v-btn>
-              </template>
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </v-table>
+                    class="action-btn"
+                    :disabled="
+                      inventory.downloadingFileId === item.b2_file_id ||
+                      inventory.deletingFileId === item.id
+                    "
+                    @click.stop="handleDeleteClick(item)"
+                  >
+                    <v-progress-circular
+                      v-if="inventory.deletingFileId === item.id"
+                      indeterminate
+                      size="18"
+                      width="2"
+                      color="error"
+                    />
+                    <v-icon v-else icon="mdi-delete" />
+                    <v-tooltip activator="parent" location="top">
+                      Delete File
+                    </v-tooltip>
+                  </v-btn>
+                </template>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </v-table>
+    </v-card>
 
     <!-- LOAD MORE BUTTON -->
     <div v-if="inventory.hasMoreFiles" class="d-flex justify-center mt-4">
@@ -325,12 +386,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useInventoryStore, type VirtualItem } from "@/stores/inventory";
 import { useJobsStore, type Job } from "@/stores/jobs";
 import { formatBytes, formatDate } from "@/utils/formatters";
 import { getFileIcon } from "@/utils/fileIcons";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
+
+interface BreadcrumbItem {
+  title: string;
+  disabled: boolean;
+  path: string;
+}
 
 const inventory = useInventoryStore();
 const jobsStore = useJobsStore();
@@ -338,6 +405,30 @@ const jobsStore = useJobsStore();
 const confirmDialog = ref<InstanceType<typeof ConfirmDialog> | null>(null);
 const dialogTitle = ref("Delete Item");
 const dialogMessage = ref("");
+
+// Generates dynamic breadcrumb paths from inventory.currentPath
+const breadcrumbItems = computed<BreadcrumbItem[]>(() => {
+  const items: BreadcrumbItem[] = [
+    { title: "Home", disabled: inventory.currentPath === "/", path: "/" },
+  ];
+
+  if (inventory.currentPath === "/") return items;
+
+  const parts = inventory.currentPath.split("/").filter(Boolean);
+  let accumulatedPath = "";
+
+  parts.forEach((part, index) => {
+    accumulatedPath += `/${part}`;
+    const isLast = index === parts.length - 1;
+    items.push({
+      title: part,
+      disabled: isLast,
+      path: accumulatedPath,
+    });
+  });
+
+  return items;
+});
 
 const handleItemClick = (item: any) => {
   if (item.type === "folder") {
@@ -474,5 +565,9 @@ onMounted(() => {
 
 .inventory-row:hover .action-btn {
   opacity: 1;
+}
+
+.cursor-pointer {
+  cursor: pointer;
 }
 </style>

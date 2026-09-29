@@ -24,8 +24,6 @@
       @change="handleFileSelect"
     />
 
-    <BreadCrumb class="mb-4" />
-
     <v-card
       rounded="xl"
       border
@@ -76,7 +74,6 @@
 import { ref, onMounted, onUnmounted } from "vue";
 import { useInventoryStore } from "@/stores/inventory";
 import { useUploadStore } from "@/stores/uploads";
-import BreadCrumb from "./components/BreadCrumb.vue";
 import InventoryTable from "./components/InventoryTable.vue";
 import LoadingState from "./components/LoadingState.vue";
 import ErrorAlert from "./components/ErrorAlert.vue";
