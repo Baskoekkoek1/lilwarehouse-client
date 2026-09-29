@@ -24,13 +24,6 @@
       @change="handleFileSelect"
     />
 
-    <ActionBar
-      :loading="inventory.loading"
-      @upload-folder="triggerFolderInput"
-      @upload-files="triggerFileInput"
-      @refresh="handleRefresh"
-    />
-
     <BreadCrumb class="mb-4" />
 
     <v-card
@@ -83,7 +76,6 @@
 import { ref, onMounted, onUnmounted } from "vue";
 import { useInventoryStore } from "@/stores/inventory";
 import { useUploadStore } from "@/stores/uploads";
-import ActionBar from "./components/ActionBar.vue";
 import BreadCrumb from "./components/BreadCrumb.vue";
 import InventoryTable from "./components/InventoryTable.vue";
 import LoadingState from "./components/LoadingState.vue";
@@ -94,9 +86,6 @@ import UploadProgressDock from "@/components/upload/UploadProgressDock.vue";
 
 const inventory = useInventoryStore();
 const uploadStore = useUploadStore();
-
-const fileInputRef = ref<HTMLInputElement | null>(null);
-const folderInputRef = ref<HTMLInputElement | null>(null);
 
 const isDragging = ref(false);
 const isParsing = ref(false);
@@ -290,22 +279,6 @@ async function handleFileSelect(event: Event) {
     isParsing.value = false;
   }
 }
-
-function triggerFileInput() {
-  fileInputRef.value?.click();
-}
-
-function triggerFolderInput() {
-  folderInputRef.value?.click();
-}
-
-const handleRefresh = async () => {
-  inventory.reset();
-  await Promise.all([
-    inventory.fetchFoldersDirectory(),
-    inventory.fetchCurrentDirectory(),
-  ]);
-};
 </script>
 
 <style scoped>
