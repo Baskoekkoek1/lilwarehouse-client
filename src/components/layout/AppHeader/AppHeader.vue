@@ -12,7 +12,7 @@
         <!-- Refresh Button -->
         <v-btn
           icon
-          variant="outlined"
+          variant="text"
           density="comfortable"
           color="grey-lighten-1"
           :loading="loading"
@@ -26,8 +26,8 @@
 
         <!-- Upload Folder Button -->
         <v-btn
-          color="grey-lighten-3"
-          variant="outlined"
+          color="grey-lighten-1"
+          variant="text"
           prepend-icon="mdi-folder-upload-outline"
           class="text-none font-weight-medium"
           @click="emit('upload-folder')"
