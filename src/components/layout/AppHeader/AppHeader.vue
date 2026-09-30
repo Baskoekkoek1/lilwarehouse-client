@@ -9,6 +9,7 @@
       </span>
 
       <div class="d-flex align-center ga-2 flex-shrink-0">
+        <!-- Refresh Button -->
         <v-btn
           icon
           variant="outlined"
@@ -18,11 +19,12 @@
           @click="emit('refresh')"
         >
           <v-icon icon="mdi-refresh" />
-          <v-tooltip activator="parent" location="bottom"
-            >Refresh Inventory</v-tooltip
-          >
+          <v-tooltip activator="parent" location="bottom">
+            Refresh Inventory
+          </v-tooltip>
         </v-btn>
 
+        <!-- Upload Folder Button -->
         <v-btn
           color="grey-lighten-3"
           variant="outlined"
@@ -33,6 +35,7 @@
           Upload Folder
         </v-btn>
 
+        <!-- Upload Files Button -->
         <v-btn
           color="primary"
           variant="flat"
@@ -46,6 +49,7 @@
         <v-divider vertical inset class="mx-1" />
 
         <!-- Auth Section -->
+        <!-- Logged Out State -->
         <template v-if="!authStore.user && !authStore.token">
           <v-btn
             color="grey-lighten-1"
@@ -58,28 +62,45 @@
           </v-btn>
         </template>
 
+        <!-- Logged In Profile Dropdown Menu -->
         <template v-else>
-          <v-btn
-            icon
-            variant="text"
-            density="comfortable"
-            @click="handleAccountButtonClick"
-          >
-            <v-icon icon="mdi-account-circle" color="primary" size="26" />
-            <v-tooltip activator="parent" location="bottom">
-              {{ authStore.user?.username || "Account" }}
-            </v-tooltip>
-          </v-btn>
+          <v-menu location="bottom end" transition="scale-transition">
+            <template v-slot:activator="{ props }">
+              <v-btn
+                v-bind="props"
+                variant="text"
+                class="d-flex align-center ga-2 text-none px-2"
+              >
+                <v-avatar color="grey-darken-3" size="32">
+                  <v-icon icon="mdi-account" color="primary" size="20" />
+                </v-avatar>
+                <span
+                  class="text-body-2 font-weight-medium text-grey-lighten-1"
+                >
+                  {{ authStore.user?.username || "Account" }}
+                </span>
+                <v-icon
+                  icon="mdi-chevron-down"
+                  size="16"
+                  color="grey-lighten-1"
+                />
+              </v-btn>
+            </template>
 
-          <v-btn
-            icon
-            variant="text"
-            density="comfortable"
-            @click="authStore.logout()"
-          >
-            <v-icon icon="mdi-logout" color="error" size="22" />
-            <v-tooltip activator="parent" location="bottom">Log Out</v-tooltip>
-          </v-btn>
+            <v-list
+              density="compact"
+              class="bg-surface border rounded-lg mt-1"
+              width="180"
+            >
+              <v-list-item
+                prepend-icon="mdi-logout"
+                title="Log Out"
+                color="error"
+                class="text-error"
+                @click="authStore.logout()"
+              />
+            </v-list>
+          </v-menu>
         </template>
       </div>
     </div>

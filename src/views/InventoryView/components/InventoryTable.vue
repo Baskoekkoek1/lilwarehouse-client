@@ -9,43 +9,8 @@
     >
       <!-- Integrated Top Header Bar -->
       <div class="d-flex align-center justify-space-between px-4 py-3 border-b">
-        <div class="d-flex align-center ga-2">
-          <v-icon icon="mdi-folder-outline" size="18" color="primary" />
-
-          <!-- Dynamic Path Breadcrumbs -->
-          <v-breadcrumbs
-            :items="breadcrumbItems"
-            class="pa-0 text-body-2"
-            active-color="white"
-            color="grey-lighten-1"
-          >
-            <template v-slot:divider>
-              <v-icon
-                icon="mdi-chevron-right"
-                size="14"
-                color="grey-darken-1"
-              />
-            </template>
-
-            <template v-slot:title="{ item }">
-              <span
-                class="cursor-pointer"
-                :class="{
-                  'text-white font-weight-medium': item.disabled,
-                  'text-grey-lighten-1': !item.disabled,
-                }"
-                @click="
-                  !item.disabled &&
-                  inventoryStore.navigateTo(
-                    (item as any).raw?.path || (item as any).path,
-                  )
-                "
-              >
-                {{ item.title }}
-              </span>
-            </template>
-          </v-breadcrumbs>
-        </div>
+        <!-- Reusable Extracted Breadcrumbs -->
+        <InventoryBreadcrumbs />
 
         <!-- Folder Item Stats -->
         <div class="d-flex align-center ga-3">
@@ -59,14 +24,10 @@
       <v-table theme="dark" class="bg-transparent">
         <thead>
           <tr>
-            <th class="text-uppercase text-caption font-weight-bold">Name</th>
-            <th class="text-uppercase text-caption font-weight-bold text-right">
-              Size
-            </th>
-            <th class="text-uppercase text-caption font-weight-bold text-right">
-              Uploaded
-            </th>
-            <th class="text-right pe-4">Actions</th>
+            <th class="table-header text-left ps-4">Name</th>
+            <th class="table-header text-right">Size</th>
+            <th class="table-header text-right">Uploaded</th>
+            <th class="table-header text-right pe-6">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -79,7 +40,7 @@
             <td
               @click="handleItemClick(item)"
               :class="{ 'folder-row': item.type === 'folder' }"
-              class="py-3"
+              class="py-3 ps-4"
             >
               <div class="d-flex align-center">
                 <v-icon
@@ -112,9 +73,9 @@
             </td>
 
             <!-- ACTIONS -->
-            <td class="text-right" style="width: 170px">
+            <td class="text-right pe-6" style="width: 180px">
               <div
-                class="d-flex align-center justify-end w-100 pe-1 ga-1"
+                class="d-flex align-center justify-end w-100 ga-1"
                 style="min-height: 36px"
               >
                 <!-- FOLDER ACTIONS -->
@@ -139,8 +100,7 @@
                       icon="mdi-close-circle"
                       variant="text"
                       density="compact"
-                      color="error"
-                      class="action-btn"
+                      class="action-btn action-btn-error"
                       @click.stop="
                         jobsStore.cancelJob(getJob(item.file_name)!.id)
                       "
@@ -189,8 +149,7 @@
                         icon="mdi-close-circle"
                         variant="text"
                         density="compact"
-                        color="error"
-                        class="action-btn"
+                        class="action-btn action-btn-error"
                         @click.stop="
                           jobsStore.cancelJob(getJob(item.file_name)!.id)
                         "
@@ -217,8 +176,7 @@
                       icon="mdi-refresh"
                       variant="text"
                       density="comfortable"
-                      color="warning"
-                      class="action-btn"
+                      class="action-btn action-btn-warning"
                       @click.stop="handleDownloadClick(item)"
                     >
                       <v-tooltip activator="parent" location="top"
@@ -240,8 +198,7 @@
                       icon="mdi-refresh"
                       variant="text"
                       density="comfortable"
-                      color="error"
-                      class="action-btn"
+                      class="action-btn action-btn-error"
                       @click.stop="handleDownloadClick(item)"
                     >
                       <v-tooltip activator="parent" location="top"
@@ -260,12 +217,7 @@
                     "
                     variant="text"
                     density="comfortable"
-                    :color="
-                      getFolderJobStatus(item.file_name) === 'COMPLETED'
-                        ? 'success'
-                        : 'primary'
-                    "
-                    class="action-btn"
+                    class="action-btn action-btn-primary"
                     @click.stop="handleDownloadClick(item)"
                   >
                     <v-tooltip activator="parent" location="top">
@@ -282,8 +234,7 @@
                     icon
                     variant="text"
                     density="comfortable"
-                    color="error"
-                    class="action-btn"
+                    class="action-btn action-btn-error"
                     :disabled="
                       inventoryStore.deletingFolderName === item.file_name
                     "
@@ -311,8 +262,7 @@
                     icon
                     variant="text"
                     density="comfortable"
-                    color="primary"
-                    class="action-btn"
+                    class="action-btn action-btn-primary"
                     :disabled="
                       inventoryStore.downloadingFileId === item.b2_file_id ||
                       inventoryStore.deletingFileId === item.id
@@ -338,8 +288,7 @@
                     icon
                     variant="text"
                     density="comfortable"
-                    color="error"
-                    class="action-btn"
+                    class="action-btn action-btn-error"
                     :disabled="
                       inventoryStore.downloadingFileId === item.b2_file_id ||
                       inventoryStore.deletingFileId === item.id
@@ -392,55 +341,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, onMounted } from "vue";
 import { useInventoryStore, type VirtualItem } from "@/stores/inventory";
 import { useJobsStore, type Job } from "@/stores/jobs";
-import { useAuthStore } from "@/stores/auth";
 import { formatBytes, formatDate } from "@/utils/formatters";
 import { getFileIcon } from "@/utils/fileIcons";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
-
-interface BreadcrumbItem {
-  title: string;
-  disabled: boolean;
-  path: string;
-}
+import InventoryBreadcrumbs from "./BreadCrumbs.vue";
 
 const inventoryStore = useInventoryStore();
 const jobsStore = useJobsStore();
-const authStore = useAuthStore();
 
 const confirmDialog = ref<InstanceType<typeof ConfirmDialog> | null>(null);
 const dialogTitle = ref("Delete Item");
 const dialogMessage = ref("");
-
-// Generates dynamic breadcrumb paths from inventoryStore.currentPath
-const breadcrumbItems = computed<BreadcrumbItem[]>(() => {
-  const items: BreadcrumbItem[] = [
-    {
-      title: `${authStore.user?.username ?? "stranger"}`,
-      disabled: inventoryStore.currentPath === "/",
-      path: "/",
-    },
-  ];
-
-  if (inventoryStore.currentPath === "/") return items;
-
-  const parts = inventoryStore.currentPath.split("/").filter(Boolean);
-  let accumulatedPath = "";
-
-  parts.forEach((part, index) => {
-    accumulatedPath += `/${part}`;
-    const isLast = index === parts.length - 1;
-    items.push({
-      title: part,
-      disabled: isLast,
-      path: accumulatedPath,
-    });
-  });
-
-  return items;
-});
 
 const handleItemClick = (item: any) => {
   if (item.type === "folder") {
@@ -548,6 +462,15 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* Improvement 1: Title Case Header styling */
+.table-header {
+  color: #a1a1aa !important;
+  font-size: 0.75rem !important;
+  font-weight: 600 !important;
+  letter-spacing: normal !important;
+  text-transform: none !important;
+}
+
 .inventory-row {
   transition: background-color 0.15s ease;
 }
@@ -572,17 +495,26 @@ onMounted(() => {
   display: inline-block;
 }
 
-/* Action buttons stay muted at 60% opacity until hovering over the row */
+/* Improvement 2: Muted neutral gray buttons that light up on hover */
 .action-btn {
+  color: #9ca3af !important;
   opacity: 0.6;
-  transition: opacity 0.15s ease;
+  transition: all 0.2s ease;
 }
 
 .inventory-row:hover .action-btn {
   opacity: 1;
 }
 
-.cursor-pointer {
-  cursor: pointer;
+.inventory-row:hover .action-btn-primary:hover {
+  color: rgb(var(--v-theme-primary)) !important;
+}
+
+.inventory-row:hover .action-btn-error:hover {
+  color: rgb(var(--v-theme-error)) !important;
+}
+
+.inventory-row:hover .action-btn-warning:hover {
+  color: rgb(var(--v-theme-warning)) !important;
 }
 </style>
