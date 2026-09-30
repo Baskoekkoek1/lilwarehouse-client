@@ -364,24 +364,19 @@ const getFileIconColor = (fileName: string, type: string): string => {
 
   const ext = fileName.split(".").pop()?.toLowerCase() || "";
 
-  // Images -> Soft Emerald / Teal
   if (["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp"].includes(ext)) {
     return "#2DD4BF";
   }
-  // Documents & Code -> Soft Cyan / Blue
   if (["pdf", "doc", "docx", "txt", "md", "json", "csv", "xml"].includes(ext)) {
     return "#38BDF8";
   }
-  // Archives & Compressed -> Soft Amber / Orange
   if (["zip", "tar", "gz", "7z", "rar"].includes(ext)) {
     return "#F59E0B";
   }
-  // Audio / Video -> Soft Purple
   if (["mp3", "wav", "mp4", "mkv", "avi", "mov"].includes(ext)) {
     return "#A855F7";
   }
 
-  // Fallback default neutral grey
   return "grey-lighten-1";
 };
 
@@ -538,7 +533,14 @@ onMounted(() => {
 .action-btn {
   color: #9ca3af !important;
   opacity: 0.6;
-  transition: all 0.2s ease;
+  transition:
+    opacity 0.2s ease,
+    color 0.2s ease,
+    transform 0.15s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.action-btn:hover {
+  transform: scale(1.15);
 }
 
 .inventory-row:hover .action-btn {
