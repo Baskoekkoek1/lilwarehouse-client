@@ -257,6 +257,10 @@ export const useInventoryStore = defineStore("inventory", () => {
     error.value = message;
   };
 
+  const setCurrentPath = (path: string) => {
+    currentPath.value = path;
+  };
+
   const clearFilesStream = () => {
     items.value = [];
     currentOffset.value = 0;
@@ -294,6 +298,7 @@ export const useInventoryStore = defineStore("inventory", () => {
     fetchFoldersDirectory,
     fetchCurrentDirectory,
     setError,
+    setCurrentPath,
     clearFilesStream,
     reset,
     navigateTo,

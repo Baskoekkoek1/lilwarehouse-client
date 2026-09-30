@@ -1,5 +1,5 @@
 <template>
-  <div v-if="inventoryStore.currentDirectoryContent.length > 0">
+  <div>
     <!-- Integrated Card Shell -->
     <v-card
       flat
@@ -345,13 +345,15 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
+import { useRouter } from "vue-router";
 import { useInventoryStore, type VirtualItem } from "@/stores/inventory";
 import { useJobsStore, type Job } from "@/stores/jobs";
 import { formatBytes, formatDate } from "@/utils/formatters";
 import { getFileIcon } from "@/utils/fileIcons";
-import ConfirmDialog from "../components/ConfirmDialog.vue";
+import ConfirmDialog from "./ConfirmDialog.vue";
 import InventoryBreadcrumbs from "./BreadCrumbs.vue";
 
+const router = useRouter();
 const inventoryStore = useInventoryStore();
 const jobsStore = useJobsStore();
 
@@ -388,7 +390,7 @@ const handleItemClick = (item: any) => {
       ? `${cleanPath}/${item.file_name}`
       : item.file_name;
 
-    inventoryStore.navigateTo(newPath);
+    router.push({ query: { path: newPath } });
   }
 };
 

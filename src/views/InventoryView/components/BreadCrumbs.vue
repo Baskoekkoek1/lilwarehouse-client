@@ -23,9 +23,7 @@
           }"
           @click="
             !item.disabled &&
-            inventoryStore.navigateTo(
-              (item as any).raw?.path || (item as any).path,
-            )
+            handleBreadcrumbClick((item as any).raw?.path || (item as any).path)
           "
         >
           {{ item.title }}
@@ -37,6 +35,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
+import { useRouter } from "vue-router";
 import { useInventoryStore } from "@/stores/inventory";
 import { useAuthStore } from "@/stores/auth";
 
@@ -46,8 +45,16 @@ interface BreadcrumbItem {
   path: string;
 }
 
+const router = useRouter();
 const inventoryStore = useInventoryStore();
 const authStore = useAuthStore();
+
+const handleBreadcrumbClick = (path: string) => {
+  // Push the path to the URL query string to maintain browser back/forward history
+  router.push({
+    query: path === "/" ? {} : { path },
+  });
+};
 
 const breadcrumbItems = computed<BreadcrumbItem[]>(() => {
   const items: BreadcrumbItem[] = [

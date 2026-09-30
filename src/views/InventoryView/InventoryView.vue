@@ -48,7 +48,7 @@
 
     <UploadProgressDock />
 
-    <!-- Parsing Overlay (For processing large dropped folders) -->
+    <!-- Parsing Overlay -->
     <v-overlay
       :model-value="isParsing"
       class="align-center justify-center flex-column"
@@ -71,7 +71,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
+import { ref, onMounted, onUnmounted, watch } from "vue";
+import { useRoute } from "vue-router";
 import { useInventoryStore } from "@/stores/inventory";
 import { useUploadStore } from "@/stores/uploads";
 import InventoryTable from "./components/InventoryTable.vue";
@@ -81,6 +82,7 @@ import EmptyState from "./components/EmptyState.vue";
 import DropZoneOverlay from "@/components/upload/DropZoneOverlay.vue";
 import UploadProgressDock from "@/components/upload/UploadProgressDock.vue";
 
+const route = useRoute();
 const inventory = useInventoryStore();
 const uploadStore = useUploadStore();
 
@@ -91,7 +93,17 @@ const errorMessage = ref("");
 
 let dragCounter = 0;
 
-// --- Global Drag Prevention ---
+watch(
+  () => route.query.path,
+  async (newPath) => {
+    const targetPath = typeof newPath === "string" ? newPath : "/";
+
+    inventory.currentPath = targetPath;
+    await inventory.fetchCurrentDirectory();
+  },
+  { immediate: true },
+);
+
 const preventGlobalDrop = (e: DragEvent) => e.preventDefault();
 
 onMounted(() => {
@@ -100,7 +112,6 @@ onMounted(() => {
 
   inventory.fetchFoldersDirectory();
   inventory.clearFilesStream();
-  inventory.fetchCurrentDirectory();
   uploadStore.initQueue();
 });
 
@@ -135,7 +146,7 @@ function getBasePath(): string {
   if (!current || current === "root" || current === "/") {
     return "";
   }
-  return current.replace(/^\/+|\/+$/g, ""); // Strip leading/trailing slashes
+  return current.replace(/^\/+|\/+$/g, "");
 }
 
 async function parseDroppedItems(
