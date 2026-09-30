@@ -1,5 +1,5 @@
 <template>
-  <div v-if="inventory.currentDirectoryContent.length > 0">
+  <div v-if="inventoryStore.currentDirectoryContent.length > 0">
     <!-- Integrated Card Shell -->
     <v-card
       flat
@@ -36,7 +36,7 @@
                 }"
                 @click="
                   !item.disabled &&
-                  inventory.navigateTo(
+                  inventoryStore.navigateTo(
                     (item as any).raw?.path || (item as any).path,
                   )
                 "
@@ -50,7 +50,7 @@
         <!-- Folder Item Stats -->
         <div class="d-flex align-center ga-3">
           <span class="text-caption text-grey-lighten-1">
-            {{ inventory.currentDirectoryContent.length }} items
+            {{ inventoryStore.currentDirectoryContent.length }} items
           </span>
         </div>
       </div>
@@ -71,7 +71,7 @@
         </thead>
         <tbody>
           <tr
-            v-for="item in inventory.currentDirectoryContent"
+            v-for="item in inventoryStore.currentDirectoryContent"
             :key="item.id"
             class="inventory-row"
           >
@@ -284,11 +284,15 @@
                     density="comfortable"
                     color="error"
                     class="action-btn"
-                    :disabled="inventory.deletingFolderName === item.file_name"
+                    :disabled="
+                      inventoryStore.deletingFolderName === item.file_name
+                    "
                     @click.stop="handleDeleteFolderClick(item)"
                   >
                     <v-progress-circular
-                      v-if="inventory.deletingFolderName === item.file_name"
+                      v-if="
+                        inventoryStore.deletingFolderName === item.file_name
+                      "
                       indeterminate
                       size="18"
                       width="2"
@@ -310,13 +314,15 @@
                     color="primary"
                     class="action-btn"
                     :disabled="
-                      inventory.downloadingFileId === item.b2_file_id ||
-                      inventory.deletingFileId === item.id
+                      inventoryStore.downloadingFileId === item.b2_file_id ||
+                      inventoryStore.deletingFileId === item.id
                     "
                     @click.stop="handleDownloadClick(item)"
                   >
                     <v-progress-circular
-                      v-if="inventory.downloadingFileId === item.b2_file_id"
+                      v-if="
+                        inventoryStore.downloadingFileId === item.b2_file_id
+                      "
                       indeterminate
                       size="18"
                       width="2"
@@ -335,13 +341,13 @@
                     color="error"
                     class="action-btn"
                     :disabled="
-                      inventory.downloadingFileId === item.b2_file_id ||
-                      inventory.deletingFileId === item.id
+                      inventoryStore.downloadingFileId === item.b2_file_id ||
+                      inventoryStore.deletingFileId === item.id
                     "
                     @click.stop="handleDeleteClick(item)"
                   >
                     <v-progress-circular
-                      v-if="inventory.deletingFileId === item.id"
+                      v-if="inventoryStore.deletingFileId === item.id"
                       indeterminate
                       size="18"
                       width="2"
@@ -361,13 +367,13 @@
     </v-card>
 
     <!-- LOAD MORE BUTTON -->
-    <div v-if="inventory.hasMoreFiles" class="d-flex justify-center mt-4">
+    <div v-if="inventoryStore.hasMoreFiles" class="d-flex justify-center mt-4">
       <v-btn
         color="secondary"
         variant="outlined"
         prepend-icon="mdi-chevron-double-down"
-        :loading="inventory.loading"
-        @click="inventory.fetchCurrentDirectory()"
+        :loading="inventoryStore.loading"
+        @click="inventoryStore.fetchCurrentDirectory()"
       >
         Load More Files
       </v-btn>
@@ -389,6 +395,7 @@
 import { ref, computed, onMounted } from "vue";
 import { useInventoryStore, type VirtualItem } from "@/stores/inventory";
 import { useJobsStore, type Job } from "@/stores/jobs";
+import { useAuthStore } from "@/stores/auth";
 import { formatBytes, formatDate } from "@/utils/formatters";
 import { getFileIcon } from "@/utils/fileIcons";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
@@ -399,22 +406,27 @@ interface BreadcrumbItem {
   path: string;
 }
 
-const inventory = useInventoryStore();
+const inventoryStore = useInventoryStore();
 const jobsStore = useJobsStore();
+const authStore = useAuthStore();
 
 const confirmDialog = ref<InstanceType<typeof ConfirmDialog> | null>(null);
 const dialogTitle = ref("Delete Item");
 const dialogMessage = ref("");
 
-// Generates dynamic breadcrumb paths from inventory.currentPath
+// Generates dynamic breadcrumb paths from inventoryStore.currentPath
 const breadcrumbItems = computed<BreadcrumbItem[]>(() => {
   const items: BreadcrumbItem[] = [
-    { title: "Home", disabled: inventory.currentPath === "/", path: "/" },
+    {
+      title: `${authStore.user?.username ?? "stranger"}`,
+      disabled: inventoryStore.currentPath === "/",
+      path: "/",
+    },
   ];
 
-  if (inventory.currentPath === "/") return items;
+  if (inventoryStore.currentPath === "/") return items;
 
-  const parts = inventory.currentPath.split("/").filter(Boolean);
+  const parts = inventoryStore.currentPath.split("/").filter(Boolean);
   let accumulatedPath = "";
 
   parts.forEach((part, index) => {
@@ -433,23 +445,24 @@ const breadcrumbItems = computed<BreadcrumbItem[]>(() => {
 const handleItemClick = (item: any) => {
   if (item.type === "folder") {
     const cleanPath =
-      inventory.currentPath === "/" ? "" : inventory.currentPath;
+      inventoryStore.currentPath === "/" ? "" : inventoryStore.currentPath;
     const newPath = cleanPath
       ? `${cleanPath}/${item.file_name}`
       : item.file_name;
 
-    inventory.navigateTo(newPath);
+    inventoryStore.navigateTo(newPath);
   }
 };
 
 const handleDownloadClick = (item: VirtualItem) => {
   if (item.type === "file" && item.b2_file_id) {
-    inventory.downloadFile(item.b2_file_id);
+    inventoryStore.downloadFile(item.b2_file_id);
     return;
   }
   if (item.type !== "folder") return;
 
-  const basePath = inventory.currentPath === "/" ? "" : inventory.currentPath;
+  const basePath =
+    inventoryStore.currentPath === "/" ? "" : inventoryStore.currentPath;
   const fullFolderPath = basePath
     ? `${basePath}/${item.file_name}`
     : `${item.file_name}`;
@@ -475,13 +488,14 @@ const handleDeleteClick = async (item: VirtualItem) => {
   const confirmed = await confirmDialog.value?.open();
   if (!confirmed) return;
 
-  await inventory.deleteFile(item.id);
+  await inventoryStore.deleteFile(item.id);
 };
 
 const handleDeleteFolderClick = async (item: VirtualItem) => {
   if (item.type !== "folder") return;
 
-  const basePath = inventory.currentPath === "/" ? "" : inventory.currentPath;
+  const basePath =
+    inventoryStore.currentPath === "/" ? "" : inventoryStore.currentPath;
   const fullFolderPath = basePath
     ? `${basePath}/${item.file_name}`
     : `${item.file_name}`;
@@ -492,11 +506,12 @@ const handleDeleteFolderClick = async (item: VirtualItem) => {
   const confirmed = await confirmDialog.value?.open();
   if (!confirmed) return;
 
-  await inventory.deleteFolder(fullFolderPath);
+  await inventoryStore.deleteFolder(fullFolderPath);
 };
 
 const getJob = (fileName: string): Job | undefined => {
-  const basePath = inventory.currentPath === "/" ? "" : inventory.currentPath;
+  const basePath =
+    inventoryStore.currentPath === "/" ? "" : inventoryStore.currentPath;
   const fullFolderPath = basePath ? `${basePath}/${fileName}` : `${fileName}`;
 
   const matchingJobs = jobsStore.activeJobs.filter(

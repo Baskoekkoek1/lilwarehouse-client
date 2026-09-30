@@ -7,12 +7,6 @@ const router = createRouter({
   routes: [
     {
       path: "/",
-      name: "Home",
-      component: () => import("../views/HomeView/HomeView.vue"),
-      meta: { public: true },
-    },
-    {
-      path: "/inventory",
       name: "Inventory",
       component: () => import("../views/InventoryView/InventoryView.vue"),
       meta: { public: false },
@@ -21,18 +15,13 @@ const router = createRouter({
 });
 
 // Navigation guard.
-router.beforeEach((to, from, next) => {
+router.beforeEach((to, _from, next) => {
   const auth = useAuthStore();
   const ui = useUIStore();
 
   if (!to.meta.public && !auth.isAuthenticated) {
     ui.isLoginModalOpen = true;
-
-    if (from.name) {
-      next(false);
-    } else {
-      next({ name: "Home" });
-    }
+    next(false);
   } else {
     next();
   }
