@@ -1,5 +1,7 @@
 <template>
-  <div class="d-flex align-center ga-2">
+  <div
+    class="d-flex align-center ga-2 px-3 py-1-5 bg-grey-darken-4 rounded-pill border"
+  >
     <v-icon icon="mdi-folder-outline" size="18" color="primary" />
 
     <v-breadcrumbs
