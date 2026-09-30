@@ -61,14 +61,17 @@
             </td>
 
             <!-- SIZE -->
-            <td class="text-right text-grey-lighten-1">
-              {{
-                item.type === "folder" ? "--" : formatBytes(item.file_size || 0)
-              }}
+            <td class="text-right text-grey-lighten-1 tabular-nums">
+              <span v-if="item.type === 'folder'" class="text-muted-dash"
+                >--</span
+              >
+              <template v-else>{{ formatBytes(item.file_size || 0) }}</template>
             </td>
 
             <!-- UPLOADED DATE -->
-            <td class="text-right text-grey-lighten-1 text-caption">
+            <td
+              class="text-right text-grey-lighten-1 text-caption tabular-nums"
+            >
               {{ formatDate(item.upload_date) }}
             </td>
 
@@ -488,13 +491,16 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* Improvement 1: Title Case Header styling */
 .table-header {
   color: #a1a1aa !important;
   font-size: 0.75rem !important;
   font-weight: 600 !important;
   letter-spacing: normal !important;
   text-transform: none !important;
+}
+
+.inventory-row td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
 }
 
 .inventory-row {
@@ -521,7 +527,14 @@ onMounted(() => {
   display: inline-block;
 }
 
-/* Improvement 2: Muted neutral gray buttons that light up on hover */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.text-muted-dash {
+  color: #52525b;
+}
+
 .action-btn {
   color: #9ca3af !important;
   opacity: 0.6;
