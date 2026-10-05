@@ -71,7 +71,7 @@
                 variant="text"
                 class="d-flex align-center ga-2 text-none px-2"
               >
-                <v-avatar color="grey-darken-3" size="32">
+                <v-avatar color="grey-darken-5" size="32">
                   <v-icon icon="mdi-account" color="primary" size="20" />
                 </v-avatar>
                 <span
