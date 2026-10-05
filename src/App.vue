@@ -14,23 +14,23 @@
       </v-container>
     </v-main>
 
+    <!-- Hidden native file pickers bound programmatically via composable -->
     <input
-      ref="fileInputRef"
+      :ref="(el) => bindFileInput(el as HTMLInputElement)"
       type="file"
       multiple
       class="d-none"
-      @change="handleFilesSelected"
     />
     <input
-      ref="folderInputRef"
+      :ref="(el) => bindFolderInput(el as HTMLInputElement)"
       type="file"
       webkitdirectory
       directory
       multiple
       class="d-none"
-      @change="handleFolderSelected"
     />
 
+    <!-- Global Loading Overlay -->
     <v-overlay
       v-model="uiStore.isGlobalLoading"
       class="align-center justify-center"
@@ -41,52 +41,32 @@
       <v-progress-circular indeterminate size="64" color="primary" />
     </v-overlay>
 
+    <!-- Authentication Modal -->
     <LoginModal v-model:login-open="uiStore.isLoginModalOpen" />
   </v-app>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { onMounted } from "vue";
 import AppHeader from "./components/layout/AppHeader/AppHeader.vue";
 import LoginModal from "./components/auth/LoginModal/LoginModal.vue";
 import { useUIStore } from "./stores/ui";
 import { useAuthStore } from "./stores/auth";
 import { useUploadStore } from "./stores/uploads";
 import { useInventoryStore } from "./stores/inventory";
+import { useUploadActions } from "./composables/useUploadActions";
 
 const uiStore = useUIStore();
 const authStore = useAuthStore();
 const uploadStore = useUploadStore();
 const inventoryStore = useInventoryStore();
 
-const fileInputRef = ref<HTMLInputElement | null>(null);
-const folderInputRef = ref<HTMLInputElement | null>(null);
-
-const triggerFileUpload = () => {
-  fileInputRef.value?.click();
-};
-
-const triggerFolderUpload = () => {
-  folderInputRef.value?.click();
-};
-
-const handleFilesSelected = (event: Event) => {
-  const target = event.target as HTMLInputElement;
-  if (target.files && target.files.length > 0) {
-    // Pass selected files to upload store queue
-    // uploadStore.uploadFiles(Array.from(target.files));
-    target.value = ""; // Reset input
-  }
-};
-
-const handleFolderSelected = (event: Event) => {
-  const target = event.target as HTMLInputElement;
-  if (target.files && target.files.length > 0) {
-    // Pass selected folder files to upload store queue
-    // uploadStore.uploadFolder(Array.from(target.files));
-    target.value = ""; // Reset input
-  }
-};
+const {
+  bindFileInput,
+  bindFolderInput,
+  triggerFileUpload,
+  triggerFolderUpload,
+} = useUploadActions();
 
 onMounted(async () => {
   const isAuth = await authStore.initAuth();
