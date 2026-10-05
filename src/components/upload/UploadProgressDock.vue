@@ -5,17 +5,19 @@
     elevation="12"
     rounded="xl"
   >
+    <!-- Top Progress Bar -->
     <v-progress-linear
-      :model-value="uploadStore.overallProgress"
+      :model-value="uploadStore.overallProgress || 0"
       :color="uploadStore.errorCount > 0 ? 'warning' : 'primary'"
       height="4"
     />
 
+    <!-- Header / Toggle Section -->
     <div
       class="dock-header d-flex align-center justify-space-between px-4 py-3 cursor-pointer"
       @click="toggleMinimize"
     >
-      <div class="d-flex align-center gap-3 overflow-hidden">
+      <div class="d-flex align-center ga-3 overflow-hidden">
         <v-progress-circular
           v-if="uploadStore.isProcessing"
           indeterminate
@@ -46,7 +48,7 @@
             <template v-else> Queue paused </template>
           </div>
           <div class="text-caption text-grey">
-            {{ uploadStore.overallProgress }}% completed
+            {{ Math.round(uploadStore.overallProgress || 0) }}% completed
             <span
               v-if="uploadStore.activeProcessingCount > 0"
               class="text-primary font-weight-medium"
@@ -77,15 +79,17 @@
           size="small"
           color="grey-darken-1"
           title="Clear queue"
-          @click.stop="uploadStore.clearUploadQueue()"
+          @click.stop="handleClearQueue"
         >
           <v-icon icon="mdi-close" />
         </v-btn>
       </div>
     </div>
 
+    <!-- Expanded Details Section -->
     <v-expand-transition>
       <div v-show="!isMinimized" class="pa-3">
+        <!-- Queue Summary Metrics -->
         <v-row
           density="compact"
           class="mb-2 text-center bg-grey-lighten-4 rounded-lg py-2 ma-0"
@@ -112,24 +116,25 @@
             </div>
             <div
               class="text-body-2 font-weight-bold"
-              :class="uploadStore.errorCount > 0 ? 'text-error' : ''"
+              :class="{ 'text-error': uploadStore.errorCount > 0 }"
             >
               {{ uploadStore.errorCount }}
             </div>
           </v-col>
         </v-row>
 
+        <!-- Retry / Clear Failed Actions -->
         <div
           v-if="uploadStore.errorCount > 0 && !uploadStore.isProcessing"
-          class="d-flex gap-2 mb-2"
+          class="d-flex ga-2 mb-2"
         >
           <v-btn
             block
             size="small"
             color="primary"
             variant="tonal"
-            class="text-none font-weight-medium"
-            @click="uploadStore.retryFailedTasks()"
+            class="text-none font-weight-medium flex-grow-1"
+            @click="handleRetryFailed"
           >
             Retry Failed ({{ uploadStore.errorCount }})
           </v-btn>
@@ -138,17 +143,20 @@
             color="error"
             variant="text"
             class="text-none"
-            @click="uploadStore.clearFailedTasks()"
+            @click="handleClearFailed"
           >
             Clear
           </v-btn>
         </div>
 
+        <!-- Activity Log Stream -->
         <div
           class="log-stream-container border rounded-lg overflow-y-auto bg-grey-lighten-5"
         >
           <div
-            v-if="uploadStore.recentLogs.length === 0"
+            v-if="
+              !uploadStore.recentLogs || uploadStore.recentLogs.length === 0
+            "
             class="text-caption text-grey text-center py-4"
           >
             No activity logs yet
@@ -158,18 +166,14 @@
             <div
               v-for="log in uploadStore.recentLogs"
               :key="log.id"
-              class="d-flex align-center gap-2 px-3 py-2 text-caption border-b"
+              class="d-flex align-center ga-2 px-3 py-2 text-caption border-b"
             >
-              <span class="text-grey-darken-1 font-mono shrink-0">{{
+              <span class="text-grey-darken-1 font-mono flex-shrink-0">{{
                 log.time
               }}</span>
               <div
                 class="flex-grow-1 text-truncate min-w-0"
-                :class="{
-                  'text-success font-weight-bold': log.type === 'success',
-                  'text-error font-weight-bold': log.type === 'error',
-                  'text-grey-darken-3': log.type === 'info' || !log.type,
-                }"
+                :class="getLogTextClass(log.type)"
                 :title="log.message"
               >
                 {{ log.message }}
@@ -201,6 +205,29 @@ const isComplete = computed(() => {
 function toggleMinimize() {
   isMinimized.value = !isMinimized.value;
 }
+
+function handleClearQueue() {
+  uploadStore.clearUploadQueue();
+}
+
+function handleRetryFailed() {
+  uploadStore.retryFailedTasks();
+}
+
+function handleClearFailed() {
+  uploadStore.clearFailedTasks();
+}
+
+function getLogTextClass(type?: string) {
+  switch (type) {
+    case "success":
+      return "text-success font-weight-bold";
+    case "error":
+      return "text-error font-weight-bold";
+    default:
+      return "text-grey-darken-3";
+  }
+}
 </script>
 
 <style scoped>
@@ -229,14 +256,6 @@ function toggleMinimize() {
 
 .min-w-0 {
   min-width: 0;
-}
-
-.gap-2 {
-  gap: 8px;
-}
-
-.gap-3 {
-  gap: 12px;
 }
 
 .cursor-pointer {

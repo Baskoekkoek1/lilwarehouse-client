@@ -19,8 +19,8 @@
 
       <p class="text-caption text-grey">
         Uploading directly to:
-        <code class="text-primary font-weight-bold">{{
-          targetPath || "/"
+        <code class="text-primary font-weight-bold ml-1">{{
+          formattedPath
         }}</code>
       </p>
     </v-card>
@@ -28,9 +28,23 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
-  targetPath?: string;
-}>();
+import { computed } from "vue";
+
+const props = withDefaults(
+  defineProps<{
+    targetPath?: string;
+  }>(),
+  {
+    targetPath: "root",
+  },
+);
+
+const formattedPath = computed(() => {
+  if (!props.targetPath || props.targetPath === "root") return "/";
+  return props.targetPath.startsWith("/")
+    ? props.targetPath
+    : `/${props.targetPath}`;
+});
 </script>
 
 <style scoped>
@@ -50,7 +64,7 @@ defineProps<{
 .dropzone-card {
   max-width: 360px;
   width: 100%;
-  background: rgba(255, 255, 255, 0.95) !important;
+  background-color: rgba(255, 255, 255, 0.95) !important;
 }
 
 .dropzone-icon-wrapper {
@@ -64,7 +78,7 @@ defineProps<{
 }
 
 .bounce-icon {
-  animation: bounce 1.5s infinite;
+  animation: bounce 1.5s infinite ease-in-out;
 }
 
 @keyframes bounce {
