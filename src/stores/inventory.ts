@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
 import { ref, computed, type ComputedRef } from "vue";
+import axios from "axios";
 import apiClient from "../api/client";
 
 export interface InventoryItem {
@@ -37,6 +38,8 @@ export const useInventoryStore = defineStore("inventory", () => {
   const currentOffset = ref(0);
   const LIMIT = 50;
   const hasMoreFiles = ref(true);
+
+  let directoryFetchController: AbortController | null = null;
 
   // --- Getters ---
   const currentDirectoryContent: ComputedRef<VirtualItem[]> = computed(() => {
@@ -107,13 +110,20 @@ export const useInventoryStore = defineStore("inventory", () => {
       folders.value = Array.isArray(response.data.data)
         ? response.data.data
         : [];
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("Failed to load navigation folders directory:", err);
     }
   };
 
   const fetchCurrentDirectory = async () => {
-    if (!hasMoreFiles.value || loading.value) return;
+    if (!hasMoreFiles.value) return;
+
+    if (directoryFetchController) {
+      directoryFetchController.abort();
+    }
+
+    directoryFetchController = new AbortController();
+    const currentSignal = directoryFetchController.signal;
 
     loading.value = true;
     error.value = null;
@@ -131,6 +141,7 @@ export const useInventoryStore = defineStore("inventory", () => {
           limit: LIMIT,
           offset: currentOffset.value,
         },
+        signal: currentSignal,
       });
 
       const incomingFiles = response.data.data;
@@ -149,12 +160,24 @@ export const useInventoryStore = defineStore("inventory", () => {
           currentOffset.value += LIMIT;
         }
       }
-    } catch (err: any) {
-      error.value =
-        err.response?.data?.message || "Failed to fetch directory contents";
+    } catch (err: unknown) {
+      if (axios.isCancel(err)) {
+        return;
+      }
+
+      if (axios.isAxiosError(err)) {
+        error.value =
+          err.response?.data?.message || "Failed to fetch directory contents";
+      } else if (err instanceof Error) {
+        error.value = err.message;
+      } else {
+        error.value = "An unknown error occurred while fetching the directory";
+      }
       console.error("Directory Fetch Error:", err);
     } finally {
-      loading.value = false;
+      if (!currentSignal.aborted) {
+        loading.value = false;
+      }
     }
   };
 
@@ -186,11 +209,17 @@ export const useInventoryStore = defineStore("inventory", () => {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("File Download aborted:", err);
-      error.value =
-        err.response?.data?.message ||
-        "Failed to generate file download target link.";
+      if (axios.isAxiosError(err)) {
+        error.value =
+          err.response?.data?.message ||
+          "Failed to generate file download target link.";
+      } else if (err instanceof Error) {
+        error.value = err.message;
+      } else {
+        error.value = "Failed to generate file download target link.";
+      }
     } finally {
       downloadingFileId.value = null;
     }
@@ -202,9 +231,15 @@ export const useInventoryStore = defineStore("inventory", () => {
     try {
       await apiClient.delete(`/files/${fileId}`);
       items.value = items.value.filter((item) => item.id !== String(fileId));
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("File deletion error:", err);
-      error.value = err.response?.data?.message || "Failed to delete file.";
+      if (axios.isAxiosError(err)) {
+        error.value = err.response?.data?.message || "Failed to delete file.";
+      } else if (err instanceof Error) {
+        error.value = err.message;
+      } else {
+        error.value = "Failed to delete file.";
+      }
       throw err;
     } finally {
       deletingFileId.value = null;
@@ -240,9 +275,15 @@ export const useInventoryStore = defineStore("inventory", () => {
         return true;
       }
       return false;
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Folder deletion error:", err);
-      error.value = err.response?.data?.message || "Failed to delete folder.";
+      if (axios.isAxiosError(err)) {
+        error.value = err.response?.data?.message || "Failed to delete folder.";
+      } else if (err instanceof Error) {
+        error.value = err.message;
+      } else {
+        error.value = "Failed to delete folder.";
+      }
       return false;
     } finally {
       deletingFolderName.value = null;
@@ -275,6 +316,9 @@ export const useInventoryStore = defineStore("inventory", () => {
     error.value = null;
     currentOffset.value = 0;
     hasMoreFiles.value = true;
+    if (directoryFetchController) {
+      directoryFetchController.abort();
+    }
   };
 
   const navigateTo = (path: string) => {
