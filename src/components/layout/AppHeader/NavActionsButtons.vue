@@ -6,7 +6,6 @@
       variant="text"
       density="comfortable"
       color="grey-lighten-1"
-      :loading="loading"
       @click="emit('refresh')"
     >
       <v-icon icon="mdi-refresh" />

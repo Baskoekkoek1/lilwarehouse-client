@@ -17,9 +17,9 @@
 
       <h3 class="text-h6 font-weight-bold mb-1">Drop files to upload</h3>
 
-      <p class="text-caption text-grey">
+      <p class="text-caption text-medium-emphasis mb-0">
         Uploading directly to:
-        <code class="text-primary font-weight-bold ml-1">{{
+        <code class="path-code text-primary font-weight-bold ml-1">{{
           formattedPath
         }}</code>
       </p>
@@ -55,7 +55,7 @@ const formattedPath = computed(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(0, 0, 0, 0.35);
+  background-color: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(4px);
   border-radius: 16px;
   pointer-events: none;
@@ -64,7 +64,8 @@ const formattedPath = computed(() => {
 .dropzone-card {
   max-width: 360px;
   width: 100%;
-  background-color: rgba(255, 255, 255, 0.95) !important;
+  background-color: rgba(var(--v-theme-surface), 0.92) !important;
+  backdrop-filter: blur(8px);
 }
 
 .dropzone-icon-wrapper {
@@ -74,7 +75,14 @@ const formattedPath = computed(() => {
   width: 72px;
   height: 72px;
   border-radius: 50%;
+  background-color: rgba(var(--v-theme-primary), 0.12);
+}
+
+.path-code {
+  padding: 2px 6px;
+  border-radius: 6px;
   background-color: rgba(var(--v-theme-primary), 0.1);
+  font-family: monospace;
 }
 
 .bounce-icon {

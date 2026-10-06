@@ -43,7 +43,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from "vue";
+import { onMounted, watch } from "vue";
 import { useRoute } from "vue-router";
 import { useInventoryStore } from "@/stores/inventory";
 import { useUploadStore } from "@/stores/uploads";
@@ -57,9 +57,6 @@ import UploadProgressDock from "@/components/upload/UploadProgressDock.vue";
 const route = useRoute();
 const inventory = useInventoryStore();
 const uploadStore = useUploadStore();
-
-const fileInputRef = ref<HTMLInputElement | null>(null);
-const folderInputRef = ref<HTMLInputElement | null>(null);
 
 const {
   isDragging,
