@@ -135,8 +135,8 @@ import { formatBytes, formatDate } from "@/utils/formatters";
 import { getFileIcon, getFileIconColor } from "@/utils/fileIcons";
 import { useInventoryJobs } from "@/composables/useInventoryJobs";
 
-import ConfirmDialog from "./ConfirmDialog.vue";
-import InventoryBreadcrumbs from "./BreadCrumbs.vue";
+import ConfirmDialog from "../../../components/common/ConfirmDialog.vue/index.js";
+import InventoryBreadcrumbs from "../../../components/common/BreadCrumbs.vue/index.js";
 import InventoryFolderActions from "./InventoryFolderActions.vue";
 import InventoryFileActions from "./InventoryFileActions.vue";
 

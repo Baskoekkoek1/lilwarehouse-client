@@ -23,8 +23,8 @@
 <script setup lang="ts">
 import { useInventoryStore } from "@/stores/inventory";
 import InventoryTable from "./InventoryTable.vue";
-import ErrorAlert from "./ErrorAlert.vue";
-import EmptyState from "./EmptyState.vue";
+import ErrorAlert from "@/components/common/ErrorAlert.vue";
+import EmptyState from "@/components/common/EmptyState.vue";
 
 const inventory = useInventoryStore();
 </script>

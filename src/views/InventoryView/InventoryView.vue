@@ -51,8 +51,8 @@ import { useFileDrop } from "@/composables/useFileDrop";
 
 import InventoryCard from "./components/InventoryCard.vue";
 import ParsingOverlay from "./components/ParsingOverlay.vue";
-import DropZoneOverlay from "@/components/upload/DropZoneOverlay.vue";
-import UploadProgressDock from "@/components/upload/UploadProgressDock.vue";
+import DropZoneOverlay from "@/components/uploads/DropZoneOverlay.vue";
+import UploadProgressDock from "@/components/uploads/UploadProgressDock.vue";
 
 const route = useRoute();
 const inventory = useInventoryStore();
