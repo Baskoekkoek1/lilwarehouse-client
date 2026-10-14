@@ -8,11 +8,6 @@ export function useWakeLock() {
     if ("wakeLock" in navigator && !wakeLock.value) {
       try {
         wakeLock.value = await navigator.wakeLock.request("screen");
-        console.log("🔒 Wake Lock active. System will stay awake.");
-
-        wakeLock.value.onrelease = () => {
-          console.log("🔓 Wake Lock was released.");
-        };
       } catch (err: unknown) {
         if (err instanceof Error) {
           console.error(`❌ Wake Lock failed: ${err.name}, ${err.message}`);
