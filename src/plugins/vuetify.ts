@@ -4,29 +4,24 @@ import { createVuetify } from "vuetify";
 import * as components from "vuetify/components";
 import * as directives from "vuetify/directives";
 
+const savedTheme =
+  typeof window !== "undefined"
+    ? localStorage.getItem("user_theme") || "earthyLight"
+    : "earthyLight";
+
 export default createVuetify({
   components,
   directives,
-  // Standardize rounded corners across components globally
   defaults: {
-    VCard: {
-      rounded: "lg",
-    },
-    VBtn: {
-      rounded: "lg",
-    },
-    VTextField: {
-      rounded: "lg",
-    },
-    VSelect: {
-      rounded: "lg",
-    },
-    VDataTable: {
-      rounded: "lg",
-    },
+    VCard: { rounded: "lg" },
+    VBtn: { rounded: "lg" },
+    VTextField: { rounded: "lg" },
+    VSelect: { rounded: "lg" },
+    VDataTable: { rounded: "lg" },
+    VDataTableServer: { rounded: "lg" },
   },
   theme: {
-    defaultTheme: "earthyLight",
+    defaultTheme: savedTheme,
     themes: {
       earthyDark: {
         dark: true,
@@ -40,7 +35,6 @@ export default createVuetify({
           success: "#8FB996",
         },
       },
-
       earthyLight: {
         dark: false,
         colors: {
