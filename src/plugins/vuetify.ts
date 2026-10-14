@@ -26,17 +26,31 @@ export default createVuetify({
     },
   },
   theme: {
-    defaultTheme: "dark",
+    defaultTheme: "earthyLight",
     themes: {
-      dark: {
+      earthyDark: {
         dark: true,
         colors: {
-          background: "#09090B", // Main page background
-          surface: "#18181B", // Tables, cards, modals, and upload logs
-          primary: "#3B82F6", // Main accent color
-          secondary: "#27272A", // Subtle button backgrounds
-          error: "#EF4444", // Soft red for delete actions
-          success: "#10B981", // Crisp green for upload completion status
+          background: "#1A1E1C",
+          surface: "#262C29",
+          primary: "#A3B899",
+          secondary: "#2E3632",
+          accent: "#DBCFB0",
+          error: "#E57373",
+          success: "#8FB996",
+        },
+      },
+
+      earthyLight: {
+        dark: false,
+        colors: {
+          background: "#F7F5F0",
+          surface: "#FFFFFF",
+          primary: "#D97757",
+          secondary: "#889E81",
+          accent: "#E6B89C",
+          error: "#D9534F",
+          success: "#7DA165",
         },
       },
     },

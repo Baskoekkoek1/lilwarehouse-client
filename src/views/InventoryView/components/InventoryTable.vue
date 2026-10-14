@@ -8,7 +8,7 @@
     >
       <!-- Top Header Bar -->
       <div class="d-flex align-center justify-space-between px-4 py-3 border-b">
-        <InventoryBreadcrumbs />
+        <BreadCrumbs />
         <span class="text-caption text-grey-lighten-1">
           {{ inventoryStore.currentDirectoryContent.length }} items
         </span>
@@ -135,8 +135,9 @@ import { formatBytes, formatDate } from "@/utils/formatters";
 import { getFileIcon, getFileIconColor } from "@/utils/fileIcons";
 import { useInventoryJobs } from "@/composables/useInventoryJobs";
 
-import ConfirmDialog from "../../../components/common/ConfirmDialog.vue/index.js";
-import InventoryBreadcrumbs from "../../../components/common/BreadCrumbs.vue/index.js";
+import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
+import BreadCrumbs from "@/components/common/BreadCrumbs.vue";
+
 import InventoryFolderActions from "./InventoryFolderActions.vue";
 import InventoryFileActions from "./InventoryFileActions.vue";
 

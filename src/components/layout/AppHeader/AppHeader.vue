@@ -18,6 +18,18 @@
 
         <v-divider vertical inset class="mx-1" />
 
+        <v-btn
+          :icon="
+            uiStore.currentTheme === 'earthyDark'
+              ? 'mdi-weather-sunny'
+              : 'mdi-weather-night'
+          "
+          variant="text"
+          @click="uiStore.toggleTheme"
+        />
+
+        <v-divider vertical inset class="mx-1" />
+
         <NavUserMenu />
       </div>
     </div>
@@ -25,8 +37,11 @@
 </template>
 
 <script setup lang="ts">
+import { useUIStore } from "@/stores/ui.ts";
 import NavActionButtons from "./NavActionsButtons.vue";
 import NavUserMenu from "./NavUserMenu.vue";
+
+const uiStore = useUIStore();
 
 withDefaults(
   defineProps<{

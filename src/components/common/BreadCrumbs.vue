@@ -1,25 +1,28 @@
 <template>
   <div
-    class="d-flex align-center ga-2 px-3 py-1-5 bg-grey-darken-4 rounded-pill border"
+    class="d-flex align-center ga-2 px-3 py-1-5 bg-surface rounded-pill border"
   >
     <v-icon icon="mdi-folder-outline" size="18" color="primary" />
 
     <v-breadcrumbs
       :items="breadcrumbItems"
       class="pa-0 text-body-2"
-      active-color="white"
-      color="grey-lighten-1"
+      active-color="primary"
     >
       <template v-slot:divider>
-        <v-icon icon="mdi-chevron-right" size="14" color="grey-darken-1" />
+        <v-icon
+          icon="mdi-chevron-right"
+          size="14"
+          class="text-medium-emphasis"
+        />
       </template>
 
       <template v-slot:title="{ item }">
         <span
-          class="cursor-pointer"
+          class="breadcrumb-item"
           :class="{
-            'text-white font-weight-medium': item.disabled,
-            'text-grey-lighten-1': !item.disabled,
+            'text-high-emphasis font-weight-medium': item.disabled,
+            'text-medium-emphasis clickable': !item.disabled,
           }"
           @click="
             !item.disabled &&
@@ -85,7 +88,12 @@ const breadcrumbItems = computed<BreadcrumbItem[]>(() => {
 </script>
 
 <style scoped>
-.cursor-pointer {
+.breadcrumb-item.clickable {
   cursor: pointer;
+  transition: color 0.15s ease-in-out;
+}
+
+.breadcrumb-item.clickable:hover {
+  color: rgb(var(--v-theme-primary)) !important;
 }
 </style>
