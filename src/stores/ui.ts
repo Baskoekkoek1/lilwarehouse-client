@@ -13,7 +13,7 @@ export const useUIStore = defineStore("ui", () => {
   const savedTheme = localStorage.getItem("user_theme") || "earthyLight";
   const currentTheme = ref(savedTheme);
 
-  theme.global.name.value = currentTheme.value;
+  theme.change(currentTheme.value);
 
   //Getters
   const isGlobalLoading = computed(() => {
@@ -29,7 +29,7 @@ export const useUIStore = defineStore("ui", () => {
 
   const setTheme = (themeName: "earthyLight" | "earthyDark") => {
     currentTheme.value = themeName;
-    theme.global.name.value = themeName;
+    theme.change(themeName);
     localStorage.setItem("user_theme", themeName);
   };
 
