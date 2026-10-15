@@ -480,6 +480,7 @@ export const useUploadStore = defineStore("upload", () => {
             error: missingErr,
             updatedAt: Date.now(),
           });
+          fileMap.delete(record.id);
           addLog(`Error [${record.fileName}]: ${missingErr}`, "error");
         } else {
           validTasks.push({
@@ -626,6 +627,7 @@ export const useUploadStore = defineStore("upload", () => {
             error: errMessage,
             updatedAt: Date.now(),
           });
+          fileMap.delete(task.id);
           addLog(`Error [${task.fileName}]: ${errMessage}`, "error");
           continue;
         }
@@ -704,6 +706,7 @@ export const useUploadStore = defineStore("upload", () => {
             error: errorMsg,
             updatedAt: Date.now(),
           });
+          fileMap.delete(task.id);
           addLog(`Error [${task.fileName}]: ${errorMsg}`, "error");
           continue;
         }
