@@ -28,6 +28,24 @@ interface CompletionBufferItem {
   fileSize: number;
 }
 
+interface PresignedCredentialItem {
+  uploadUrl?: string;
+  storageKey?: string;
+}
+
+interface PresignedResponse {
+  credentials?: PresignedCredentialItem[];
+}
+
+interface MultipartInitResponse {
+  uploadId: string;
+  storageKey: string;
+}
+
+interface MultipartPartsResponse {
+  parts: { partNumber: number; uploadUrl: string }[];
+}
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export const useUploadStore = defineStore("upload", () => {
@@ -101,7 +119,7 @@ export const useUploadStore = defineStore("upload", () => {
             );
           }
         }
-      } catch (err) {
+      } catch (err: unknown) {
         // Quota estimate unavailable or restricted, proceed normally
       }
     }
@@ -215,7 +233,7 @@ export const useUploadStore = defineStore("upload", () => {
     const cleanPath = sanitizePath(task.path) || "root";
 
     // 1. Initiate Multipart Request
-    const { data: initData } = await apiClient.post(
+    const { data: initData } = await apiClient.post<MultipartInitResponse>(
       "/uploads/multipart/initiate",
       {
         fileName: task.fileName,
@@ -228,17 +246,17 @@ export const useUploadStore = defineStore("upload", () => {
     const partNumbers = Array.from({ length: totalParts }, (_, i) => i + 1);
 
     // 2. Request Presigned URLs for Chunks
-    const { data: presignedData } = await apiClient.post(
-      "/uploads/multipart/presigned-parts",
-      {
-        storageKey,
-        uploadId,
-        partNumbers,
-      },
-    );
+    const { data: presignedData } =
+      await apiClient.post<MultipartPartsResponse>(
+        "/uploads/multipart/presigned-parts",
+        {
+          storageKey,
+          uploadId,
+          partNumbers,
+        },
+      );
 
-    const partUrls: { partNumber: number; uploadUrl: string }[] =
-      presignedData.parts;
+    const partUrls = presignedData.parts;
     const uploadedParts: { PartNumber: number; ETag: string }[] = [];
     const loadedBytesMap = new Map<number, number>();
 
@@ -384,7 +402,7 @@ export const useUploadStore = defineStore("upload", () => {
       } else {
         isQueuing.value = false;
       }
-    } catch (err) {
+    } catch (err: unknown) {
       isQueuing.value = false;
       throw err;
     }
@@ -493,32 +511,41 @@ export const useUploadStore = defineStore("upload", () => {
           const authStore = useAuthStore();
           await authStore.checkAndRefreshTokenIfNeeded();
 
-          const { data } = await apiClient.post("/uploads/presigned", {
-            files: singlePartTasks.map((t) => {
-              const cleanPath = sanitizePath(t.path) || "root";
-              return {
-                fileName: t.fileName,
-                folderPath: cleanPath,
-                folderName: cleanPath,
-                path: cleanPath,
-              };
-            }),
-          });
+          const { data } = await apiClient.post<PresignedResponse>(
+            "/uploads/presigned",
+            {
+              files: singlePartTasks.map((t) => {
+                const cleanPath = sanitizePath(t.path) || "root";
+                return {
+                  fileName: t.fileName,
+                  folderPath: cleanPath,
+                  folderName: cleanPath,
+                  path: cleanPath,
+                };
+              }),
+            },
+          );
 
           if (data?.credentials && Array.isArray(data.credentials)) {
-            data.credentials.forEach((cred: any, index: number) => {
-              const task = singlePartTasks[index];
-              if (task && cred.uploadUrl) {
-                signatureMap.set(task.id, {
-                  uploadUrl: cred.uploadUrl,
-                  storageKey: cred.storageKey,
-                });
-              }
-            });
+            data.credentials.forEach(
+              (cred: PresignedCredentialItem, index: number) => {
+                const task = singlePartTasks[index];
+                if (task && cred.uploadUrl && cred.storageKey) {
+                  signatureMap.set(task.id, {
+                    uploadUrl: cred.uploadUrl,
+                    storageKey: cred.storageKey,
+                  });
+                }
+              },
+            );
           }
-        } catch (err: any) {
-          const serverMsg =
-            err.response?.data?.message || err.message || "Unknown error";
+        } catch (err: unknown) {
+          const serverMsg = axios.isAxiosError(err)
+            ? (err.response?.data as { message?: string })?.message ||
+              err.message
+            : err instanceof Error
+              ? err.message
+              : "Unknown error";
           addLog(
             `Failed to fetch presigned URL batch for ${singlePartTasks.length} files: ${serverMsg}`,
             "error",
@@ -646,7 +673,7 @@ export const useUploadStore = defineStore("upload", () => {
               },
             });
             uploadSuccess = true;
-          } catch (err) {
+          } catch (err: unknown) {
             attempt++;
             lastError = err;
             if (attempt < MAX_RETRIES) {

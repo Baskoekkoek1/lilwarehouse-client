@@ -2,6 +2,7 @@ import apiClient from "@/api/client";
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { sanitizePath } from "@/utils/formatters";
+import axios from "axios";
 
 export interface Job {
   id: string;
@@ -16,6 +17,23 @@ export interface Job {
   created_at: string;
   total_files?: number;
   processed_files?: number;
+}
+
+interface ZipRequestResponse {
+  jobId: string;
+  status: Job["status"];
+}
+
+interface JobsListResponse {
+  data?: Job[];
+}
+
+interface SingleJobResponse {
+  data?: Job;
+}
+
+interface PresignedDownloadResponse {
+  downloadUrl?: string;
 }
 
 export const useJobsStore = defineStore("jobs", () => {
@@ -74,16 +92,19 @@ export const useJobsStore = defineStore("jobs", () => {
     error.value = message;
   };
 
-  const downloadFolder = async (folderName: string) => {
+  const downloadFolder = async (folderName: string): Promise<void> => {
     loading.value = true;
     error.value = null;
 
     try {
       const sanitizedFolder = sanitizePath(folderName);
 
-      const response = await apiClient.post("/folders/zip-request", {
-        folder_name: sanitizedFolder,
-      });
+      const response = await apiClient.post<ZipRequestResponse>(
+        "/folders/zip-request",
+        {
+          folder_name: sanitizedFolder,
+        },
+      );
 
       const { jobId, status } = response.data;
 
@@ -96,17 +117,23 @@ export const useJobsStore = defineStore("jobs", () => {
 
       addJob(newJob);
       startPollingForJobs();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Folder packing serialization setup failed:", err);
-      error.value =
-        err.response?.data?.message ||
-        "Failed to initiate folder compression task.";
+      if (axios.isAxiosError(err)) {
+        error.value =
+          (err.response?.data as { message?: string })?.message ||
+          "Failed to initiate folder compression task.";
+      } else if (err instanceof Error) {
+        error.value = err.message;
+      } else {
+        error.value = "Failed to initiate folder compression task.";
+      }
     } finally {
       loading.value = false;
     }
   };
 
-  const cancelJob = async (jobId: string) => {
+  const cancelJob = async (jobId: string): Promise<void> => {
     error.value = null;
 
     try {
@@ -124,20 +151,26 @@ export const useJobsStore = defineStore("jobs", () => {
       if (remainingUnfinishedJobs.length === 0) {
         stopPolling();
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(`Failed to terminate job ${jobId}:`, err);
-      error.value =
-        err.response?.data?.message ||
-        "Failed to cancel the active download job.";
+      if (axios.isAxiosError(err)) {
+        error.value =
+          (err.response?.data as { message?: string })?.message ||
+          "Failed to cancel the active download job.";
+      } else if (err instanceof Error) {
+        error.value = err.message;
+      } else {
+        error.value = "Failed to cancel the active download job.";
+      }
     }
   };
 
-  const fetchRecentJobs = async () => {
+  const fetchRecentJobs = async (): Promise<void> => {
     loading.value = true;
     error.value = null;
 
     try {
-      const response = await apiClient.get("/jobs");
+      const response = await apiClient.get<JobsListResponse>("/jobs");
       const rawJobs =
         response.data?.data?.filter(
           (job: Job) => !isJobExpired(job) && job.status !== "CANCELLED",
@@ -165,16 +198,23 @@ export const useJobsStore = defineStore("jobs", () => {
       if (runningJobs.length > 0) {
         startPollingForJobs();
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to fetch recent jobs:", err);
-      error.value =
-        err.response?.data?.message || "Failed to fetch recent jobs.";
+      if (axios.isAxiosError(err)) {
+        error.value =
+          (err.response?.data as { message?: string })?.message ||
+          "Failed to fetch recent jobs.";
+      } else if (err instanceof Error) {
+        error.value = err.message;
+      } else {
+        error.value = "Failed to fetch recent jobs.";
+      }
     } finally {
       loading.value = false;
     }
   };
 
-  const startPollingForJobs = () => {
+  const startPollingForJobs = (): void => {
     if (isPolling.value || pollingIntervalId) return;
 
     setPolling(true);
@@ -195,7 +235,9 @@ export const useJobsStore = defineStore("jobs", () => {
       await Promise.all(
         unfinishedJobs.map(async (job) => {
           try {
-            const response = await apiClient.get(`/jobs/${job.id}`);
+            const response = await apiClient.get<SingleJobResponse>(
+              `/jobs/${job.id}`,
+            );
             const freshJobData = response.data?.data;
 
             if (freshJobData) {
@@ -207,8 +249,8 @@ export const useJobsStore = defineStore("jobs", () => {
                 updateJobFromPoll(freshJobData);
               }
             }
-          } catch (err: any) {
-            if (err.response?.status === 404) {
+          } catch (err: unknown) {
+            if (axios.isAxiosError(err) && err.response?.status === 404) {
               activeJobs.value = activeJobs.value.filter(
                 (j) => j.id !== job.id,
               );
@@ -225,7 +267,9 @@ export const useJobsStore = defineStore("jobs", () => {
     }, 2500);
   };
 
-  const fetchCompletedZipLink = async (fullFolderPath: string) => {
+  const fetchCompletedZipLink = async (
+    fullFolderPath: string,
+  ): Promise<void> => {
     const activeJob = activeJobs.value.find(
       (j) => j.folder_name === fullFolderPath && j.status === "COMPLETED",
     );
@@ -236,7 +280,7 @@ export const useJobsStore = defineStore("jobs", () => {
     }
 
     try {
-      const response = await apiClient.get(
+      const response = await apiClient.get<PresignedDownloadResponse>(
         `/downloads/presigned/${activeJob.id}`,
       );
       const downloadUrl = response.data?.downloadUrl;
@@ -249,13 +293,17 @@ export const useJobsStore = defineStore("jobs", () => {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("Failed to fetch generated zip distribution stream:", err);
-      error.value = "Failed to stream packaged folder down to disk.";
+      if (err instanceof Error) {
+        error.value = err.message;
+      } else {
+        error.value = "Failed to stream packaged folder down to disk.";
+      }
     }
   };
 
-  const stopPolling = () => {
+  const stopPolling = (): void => {
     if (pollingIntervalId) {
       clearInterval(pollingIntervalId);
       pollingIntervalId = null;
@@ -263,7 +311,7 @@ export const useJobsStore = defineStore("jobs", () => {
     setPolling(false);
   };
 
-  const reset = () => {
+  const reset = (): void => {
     activeJobs.value = [];
     loading.value = false;
     isPolling.value = false;

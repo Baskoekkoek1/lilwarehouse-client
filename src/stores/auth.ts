@@ -12,6 +12,15 @@ interface User {
   scopes: string[];
 }
 
+interface JwtPayload {
+  exp?: number;
+  [key: string]: unknown;
+}
+
+interface RefreshResponse {
+  token?: string;
+}
+
 const isTokenExpiringSoon = (
   jwtToken: string | null,
   bufferSeconds = 120,
@@ -20,7 +29,7 @@ const isTokenExpiringSoon = (
   try {
     const payloadBase64 = jwtToken.split(".")[1];
     if (!payloadBase64) return true;
-    const decoded = JSON.parse(atob(payloadBase64));
+    const decoded = JSON.parse(atob(payloadBase64)) as JwtPayload;
     if (!decoded.exp) return false;
     const expiresAtMs = decoded.exp * 1000;
     return expiresAtMs - Date.now() < bufferSeconds * 1000;
@@ -47,7 +56,10 @@ export const useAuthStore = defineStore("auth", () => {
     localStorage.setItem("lil_token", newToken);
   };
 
-  const login = async (username: string, password: string) => {
+  const login = async (
+    username: string,
+    password: string,
+  ): Promise<boolean> => {
     loading.value = true;
     error.value = null;
 
@@ -60,23 +72,29 @@ export const useAuthStore = defineStore("auth", () => {
       user.value = userData;
 
       return true;
-    } catch (err: any) {
-      error.value = err.response?.data?.message || "Login failed";
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        error.value = err.response?.data?.message || "Login failed";
+      } else if (err instanceof Error) {
+        error.value = err.message;
+      } else {
+        error.value = "Login failed";
+      }
       return false;
     } finally {
       loading.value = false;
     }
   };
 
-  const fetchUserProfile = async () => {
+  const fetchUserProfile = async (): Promise<void> => {
     if (!token.value) return;
 
     loading.value = true;
     try {
       const response = await apiClient.get("/me");
       user.value = response.data.user;
-    } catch (error) {
-      console.error("Failed to fetch user profile:", error);
+    } catch (err: unknown) {
+      console.error("Failed to fetch user profile:", err);
 
       logout();
 
@@ -106,7 +124,7 @@ export const useAuthStore = defineStore("auth", () => {
 
     refreshPromise = (async () => {
       try {
-        const { data } = await axios.post(
+        const { data } = await axios.post<RefreshResponse>(
           `${import.meta.env.VITE_API_URL || "http://localhost:3000"}/auth/refresh`,
           {},
           { withCredentials: true },
@@ -119,7 +137,7 @@ export const useAuthStore = defineStore("auth", () => {
         const uiStore = useUIStore();
         uiStore.isLoginModalOpen = true;
         return null;
-      } catch (err) {
+      } catch (err: unknown) {
         logout();
         const uiStore = useUIStore();
         uiStore.isLoginModalOpen = true;

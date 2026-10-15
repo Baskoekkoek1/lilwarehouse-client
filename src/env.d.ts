@@ -1,11 +1,9 @@
-// src/env.d.ts
 declare module "vuetify/styles" {
-  const content: any;
+  const content: Record<string, string>;
   export default content;
 }
 
-// This also helps with other side-effect imports you might use later
 declare module "*.css" {
-  const content: any;
+  const content: Record<string, string>;
   export default content;
 }
