@@ -1,6 +1,7 @@
 import { ref, onMounted, onUnmounted } from "vue";
 import { useInventoryStore } from "@/stores/inventory";
 import { useUploadStore } from "@/stores/uploads";
+import { sanitizePath } from "@/utils/formatters";
 
 export function useFileDrop() {
   const inventory = useInventoryStore();
@@ -14,9 +15,7 @@ export function useFileDrop() {
   let dragCounter = 0;
 
   function getBasePath(): string {
-    const current = inventory.currentPath;
-    if (!current || current === "root" || current === "/") return "";
-    return current.replace(/^\/+|\/+$/g, "");
+    return sanitizePath(inventory.currentPath);
   }
 
   const preventGlobalDrop = (e: DragEvent) => e.preventDefault();

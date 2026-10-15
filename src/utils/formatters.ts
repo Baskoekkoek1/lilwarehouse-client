@@ -33,3 +33,8 @@ export const formatDate = (date: string | Date | undefined): string => {
     hour12: false,
   }).format(d);
 };
+
+export const sanitizePath = (path: string | undefined | null): string => {
+  if (!path || path === "/" || path === "root") return "";
+  return path.replace(/^\/+|\/+$/g, "").replace(/\/+/g, "/");
+};

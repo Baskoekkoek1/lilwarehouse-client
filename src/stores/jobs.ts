@@ -1,6 +1,7 @@
 import apiClient from "@/api/client";
 import { defineStore } from "pinia";
 import { ref } from "vue";
+import { sanitizePath } from "@/utils/formatters";
 
 export interface Job {
   id: string;
@@ -78,7 +79,7 @@ export const useJobsStore = defineStore("jobs", () => {
     error.value = null;
 
     try {
-      const sanitizedFolder = folderName.trim().replace(/\/+$/, "");
+      const sanitizedFolder = sanitizePath(folderName);
 
       const response = await apiClient.post("/folders/zip-request", {
         folder_name: sanitizedFolder,

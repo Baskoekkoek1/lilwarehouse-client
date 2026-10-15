@@ -2,6 +2,7 @@ import { ref } from "vue";
 import { useUploadStore } from "@/stores/uploads";
 import { useInventoryStore } from "@/stores/inventory";
 import type { UploadPayloadItem } from "@/types/uploads";
+import { sanitizePath } from "@/utils/formatters";
 
 export function useUploadActions() {
   const uploadStore = useUploadStore();
@@ -34,7 +35,8 @@ export function useUploadActions() {
     const target = event.target as HTMLInputElement;
     if (!target.files || target.files.length === 0) return;
 
-    const currentPath = inventoryStore.currentPath || "root";
+    const cleanBase = sanitizePath(inventoryStore.currentPath);
+    const currentPath = cleanBase ? cleanBase : "root";
     const filesArray = Array.from(target.files);
 
     const payload: UploadPayloadItem[] = filesArray.map((file) => ({
@@ -55,7 +57,8 @@ export function useUploadActions() {
     const target = event.target as HTMLInputElement;
     if (!target.files || target.files.length === 0) return;
 
-    const currentPath = inventoryStore.currentPath || "root";
+    const cleanBase = sanitizePath(inventoryStore.currentPath);
+    const currentPath = cleanBase ? cleanBase : "root";
     const filesArray = Array.from(target.files);
 
     const payload: UploadPayloadItem[] = filesArray.map((file) => {
@@ -65,9 +68,10 @@ export function useUploadActions() {
       pathParts.pop(); // Remove file name to extract subfolder structure
       const subFolder = pathParts.join("/");
 
-      const targetPath = subFolder
-        ? `${currentPath}/${subFolder}`.replace(/\/+/g, "/")
+      const rawTargetPath = subFolder
+        ? `${currentPath === "root" ? "" : currentPath}/${subFolder}`
         : currentPath;
+      const targetPath = sanitizePath(rawTargetPath) || "root";
 
       return {
         file,

@@ -6,6 +6,7 @@ import apiClient from "../api/client";
 import { useInventoryStore } from "./inventory";
 import { useAuthStore } from "./auth";
 import { uploadDb, type UploadTaskRecord } from "@/db/uploadDb";
+import { sanitizePath } from "@/utils/formatters";
 
 // --- INTERNAL TYPES ---
 type UploadTask = UPLOAD.UploadTask;
@@ -211,12 +212,14 @@ export const useUploadStore = defineStore("upload", () => {
     const authStore = useAuthStore();
     await authStore.checkAndRefreshTokenIfNeeded();
 
+    const cleanPath = sanitizePath(task.path) || "root";
+
     // 1. Initiate Multipart Request
     const { data: initData } = await apiClient.post(
       "/uploads/multipart/initiate",
       {
         fileName: task.fileName,
-        folderPath: task.path || "root",
+        folderPath: cleanPath,
       },
     );
 
@@ -338,7 +341,7 @@ export const useUploadStore = defineStore("upload", () => {
         records.push({
           id,
           fileName: item.file.name,
-          path: item.path,
+          path: sanitizePath(item.path) || "root",
           fileSize: item.file.size,
           mimeType: item.file.type || "application/octet-stream",
           status: "PENDING",
@@ -465,7 +468,7 @@ export const useUploadStore = defineStore("upload", () => {
             id: record.id,
             file: rawFile,
             fileName: record.fileName,
-            path: record.path,
+            path: sanitizePath(record.path) || "root",
             status: "GETTING_URL",
             progress: record.progress,
             error: record.error,
@@ -491,12 +494,15 @@ export const useUploadStore = defineStore("upload", () => {
           await authStore.checkAndRefreshTokenIfNeeded();
 
           const { data } = await apiClient.post("/uploads/presigned", {
-            files: singlePartTasks.map((t) => ({
-              fileName: t.fileName,
-              folderPath: t.path || "root",
-              folderName: t.path || "root",
-              path: t.path || "root",
-            })),
+            files: singlePartTasks.map((t) => {
+              const cleanPath = sanitizePath(t.path) || "root";
+              return {
+                fileName: t.fileName,
+                folderPath: cleanPath,
+                folderName: cleanPath,
+                path: cleanPath,
+              };
+            }),
           });
 
           if (data?.credentials && Array.isArray(data.credentials)) {
@@ -550,7 +556,7 @@ export const useUploadStore = defineStore("upload", () => {
             await queueCompletionTask({
               taskId: task.id,
               fileName: task.fileName,
-              folderPath: task.path || "root",
+              folderPath: sanitizePath(task.path) || "root",
               storageKey,
               mimeType: task.file.type || "application/octet-stream",
               fileSize: task.file.size,
@@ -571,6 +577,7 @@ export const useUploadStore = defineStore("upload", () => {
               error: errorMsg,
               updatedAt: Date.now(),
             });
+            fileMap.delete(task.id);
             addLog(`Error [${task.fileName}]: ${errorMsg}`, "error");
           }
           continue; // Move to next file in batch
@@ -684,7 +691,7 @@ export const useUploadStore = defineStore("upload", () => {
         await queueCompletionTask({
           taskId: task.id,
           fileName: task.fileName,
-          folderPath: task.path || "root",
+          folderPath: sanitizePath(task.path) || "root",
           storageKey: creds.storageKey,
           mimeType: task.file.type || "application/octet-stream",
           fileSize: task.file.size,

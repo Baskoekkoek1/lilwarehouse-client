@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { ref, computed, type ComputedRef } from "vue";
 import axios from "axios";
 import apiClient from "../api/client";
+import { sanitizePath } from "@/utils/formatters";
 
 export interface InventoryItem {
   id: string;
@@ -43,18 +44,12 @@ export const useInventoryStore = defineStore("inventory", () => {
 
   // --- Getters ---
   const currentDirectoryContent: ComputedRef<VirtualItem[]> = computed(() => {
-    const currentPathClean =
-      currentPath.value === "/"
-        ? ""
-        : currentPath.value.replace(/^\/|\/$/g, "");
-
-    const targetDbFolder =
-      currentPath.value === "/" ? "root" : currentPathClean;
+    const currentPathClean = sanitizePath(currentPath.value);
+    const targetDbFolder = currentPathClean === "" ? "root" : currentPathClean;
 
     const filesList: VirtualItem[] = items.value
       .filter((item) => {
-        const cleanItemFolder =
-          item.folder_name?.replace(/^\/|\/$/g, "") || "root";
+        const cleanItemFolder = sanitizePath(item.folder_name) || "root";
         return cleanItemFolder === targetDbFolder;
       })
       .map((item) => ({
@@ -70,7 +65,7 @@ export const useInventoryStore = defineStore("inventory", () => {
     const foldersMap = new Map<string, VirtualItem>();
 
     for (const folderStr of folders.value) {
-      const cleanedFolder = folderStr.replace(/^\/|\/$/g, "");
+      const cleanedFolder = sanitizePath(folderStr);
       if (!cleanedFolder) continue;
 
       if (currentPathClean === "") {
@@ -130,9 +125,9 @@ export const useInventoryStore = defineStore("inventory", () => {
 
     try {
       let endpoint = "/inventory";
-      const cleanFolderName = currentPath.value.replace(/^\/|\/$/g, "");
+      const cleanFolderName = sanitizePath(currentPath.value);
 
-      if (cleanFolderName !== "" && currentPath.value !== "/") {
+      if (cleanFolderName !== "") {
         endpoint = `/folders/${encodeURIComponent(cleanFolderName)}`;
       }
 
@@ -251,20 +246,20 @@ export const useInventoryStore = defineStore("inventory", () => {
     error.value = null;
 
     try {
-      const cleanFolder = folderName.replace(/^\/|\/$/g, "");
+      const cleanFolder = sanitizePath(folderName);
       const encodedFolder = encodeURIComponent(cleanFolder);
       const response = await apiClient.delete(`/folders/${encodedFolder}`);
 
       if (response.status === 200) {
         folders.value = folders.value.filter((f) => {
-          const cleanF = f.replace(/^\/|\/$/g, "");
+          const cleanF = sanitizePath(f);
           return (
             cleanF !== cleanFolder && !cleanF.startsWith(`${cleanFolder}/`)
           );
         });
 
         items.value = items.value.filter((item) => {
-          const cleanItemFolder = item.folder_name.replace(/^\/|\/$/g, "");
+          const cleanItemFolder = sanitizePath(item.folder_name);
           return (
             cleanItemFolder !== cleanFolder &&
             !cleanItemFolder.startsWith(`${cleanFolder}/`)
