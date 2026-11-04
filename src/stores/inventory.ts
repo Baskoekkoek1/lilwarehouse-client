@@ -154,6 +154,8 @@ export const useInventoryStore = defineStore("inventory", () => {
         } else {
           currentOffset.value += LIMIT;
         }
+      } else {
+        hasMoreFiles.value = false;
       }
     } catch (err: unknown) {
       if (axios.isCancel(err)) {
