@@ -319,6 +319,8 @@ export const useInventoryStore = defineStore("inventory", () => {
   const navigateTo = (path: string) => {
     currentPath.value = path;
     clearFilesStream();
+    hasMoreFiles.value = true;
+    currentOffset.value = 0;
     fetchCurrentDirectory();
   };
 

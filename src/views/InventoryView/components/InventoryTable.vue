@@ -164,6 +164,7 @@ const handleItemClick = (item: VirtualItem) => {
       ? `${cleanPath}/${item.file_name}`
       : item.file_name;
     router.push({ query: { path: newPath } });
+    inventoryStore.navigateTo(newPath);
   }
 };
 
