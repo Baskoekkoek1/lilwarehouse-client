@@ -1,6 +1,6 @@
 <template>
   <v-card
-    v-if="!inventory.loading && inventory.items.length > 0"
+    v-if="!inventory.loading && inventory.currentDirectoryContent.length > 0"
     rounded="xl"
     border
     class="overflow-hidden d-flex flex-column justify-center"

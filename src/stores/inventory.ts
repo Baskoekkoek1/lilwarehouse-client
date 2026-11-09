@@ -126,6 +126,7 @@ export const useInventoryStore = defineStore("inventory", () => {
     try {
       let endpoint = "/inventory";
       const cleanFolderName = sanitizePath(currentPath.value);
+      const targetDbFolder = cleanFolderName === "" ? "root" : cleanFolderName;
 
       if (cleanFolderName !== "") {
         endpoint = `/folders/${encodeURIComponent(cleanFolderName)}`;
@@ -142,20 +143,23 @@ export const useInventoryStore = defineStore("inventory", () => {
       const incomingFiles = response.data.data;
 
       if (Array.isArray(incomingFiles)) {
+        const directIncomingFiles = incomingFiles.filter((item) => {
+          const cleanItemFolder = sanitizePath(item.folder_name) || "root";
+          return cleanItemFolder === targetDbFolder;
+        });
+
         const existingIds = new Set(items.value.map((i) => i.id));
-        const uniqueIncoming = incomingFiles.filter(
+        const uniqueIncoming = directIncomingFiles.filter(
           (item) => !existingIds.has(item.id),
         );
 
         items.value.push(...uniqueIncoming);
 
-        if (incomingFiles.length < LIMIT) {
+        if (directIncomingFiles.length < LIMIT) {
           hasMoreFiles.value = false;
         } else {
           currentOffset.value += LIMIT;
         }
-      } else {
-        hasMoreFiles.value = false;
       }
     } catch (err: unknown) {
       if (axios.isCancel(err)) {
